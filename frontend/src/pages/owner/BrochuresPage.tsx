@@ -80,7 +80,7 @@ export function BrochuresPage() {
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
-        const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
         const res = await fetch(`${apiBase}/api/v1/brochures/templates`);
         if (res.ok) {
           const data = await res.json();
@@ -131,7 +131,7 @@ export function BrochuresPage() {
     showToast(`🤖 AI Assistant processing: "${prompt}"...`);
 
     try {
-      const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
       const res = await fetch(`${apiBase}/api/v1/brochures/ai-assistant`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,7 +180,7 @@ export function BrochuresPage() {
     localStorage.setItem('fitclub_design_json_v5', JSON.stringify(designJson));
 
     try {
-      const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
       await fetch(`${apiBase}/api/v1/brochures/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -20,7 +20,7 @@ export async function extractBrochureFromImage(
   filename?: string,
   gymName: string = 'FIT CLUB'
 ): Promise<ExtractedBrochureResult> {
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
   // 1. Try calling the backend AI Template Analyzer endpoint
   try {

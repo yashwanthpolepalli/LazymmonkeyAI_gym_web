@@ -25,7 +25,7 @@ export async function generateBrochureWithAi(
   params: GenerateBrochureParams
 ): Promise<GeneratedBrochureResult> {
   try {
-    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
     const res = await fetch(`${apiBase}/api/v1/ai/generate-brochure`, {
       method: 'POST',
       headers: {
