@@ -1,416 +1,892 @@
 """
-FIT CLUB AI — Automatic PostgreSQL Database Migration Service
-Applies DDL schema migrations for missing columns and normalized workout tables cleanly without hardcoded default mock data.
+FIT CLUB AI — Cross-Dialect Database Schema Migration Service
+Applies dialect-safe schema migrations for missing tables and columns across SQLite and PostgreSQL.
+Zero hardcoded default mock data.
 """
-from sqlalchemy import text
+from typing import Dict, List, Tuple
+from sqlalchemy import inspect, text
 from src.database.session import engine
+from src.database.base import Base
+# Ensure all models are imported so Base.metadata is fully populated
+import src.models  # noqa: F401
+
+
+# Table -> List of (column_name, sql_type)
+SCHEMA_COLUMNS: Dict[str, List[Tuple[str, str]]] = {
+    "users": [
+        ("owner_id", "VARCHAR"),
+        ("branch_id", "VARCHAR"),
+        ("avatar_url", "VARCHAR"),
+        ("phone", "VARCHAR"),
+        ("is_platform_admin", "BOOLEAN"),
+        ("is_tenant_owner", "BOOLEAN"),
+    ],
+    "gym_branches": [
+        ("owner_id", "VARCHAR"),
+        ("gym_name", "VARCHAR"),
+        ("branch_name", "VARCHAR"),
+        ("city", "VARCHAR"),
+        ("address", "VARCHAR"),
+        ("is_active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "gym_settings": [
+        ("gym_name", "VARCHAR"),
+        ("address", "VARCHAR"),
+        ("phone", "VARCHAR"),
+        ("gstin", "VARCHAR"),
+        ("essl_bioserver_url", "VARCHAR"),
+        ("enable_auto_sms", "BOOLEAN"),
+        ("enable_gate_autolock", "BOOLEAN"),
+        ("enable_pos", "BOOLEAN"),
+        ("enable_inventory", "BOOLEAN"),
+        ("enable_gst_engine", "BOOLEAN"),
+        ("sgst_rate", "FLOAT"),
+        ("sgst_enabled", "BOOLEAN"),
+        ("cgst_rate", "FLOAT"),
+        ("cgst_enabled", "BOOLEAN"),
+        ("igst_rate", "FLOAT"),
+        ("igst_enabled", "BOOLEAN"),
+        ("total_gst_rate", "FLOAT"),
+        ("tax_pricing_mode", "VARCHAR"),
+        ("sac_code", "VARCHAR"),
+        ("enable_discount_engine", "BOOLEAN"),
+        ("pos_discount_presets", "JSON"),
+        ("max_staff_discount", "FLOAT"),
+        ("discount_sequence", "VARCHAR"),
+        ("tier_discounts", "JSON"),
+    ],
+    "memberships": [
+        ("payment_method", "VARCHAR"),
+        ("invoice_number", "VARCHAR"),
+        ("transaction_id", "VARCHAR"),
+        ("paid_amount", "FLOAT"),
+        ("due_amount", "FLOAT"),
+    ],
+    "customers": [
+        ("owner_id", "VARCHAR"),
+        ("branch_id", "VARCHAR"),
+        ("gender", "VARCHAR"),
+        ("weight", "FLOAT"),
+        ("height", "FLOAT"),
+        ("age", "INTEGER"),
+        ("bmi", "FLOAT"),
+        ("fitness_score", "INTEGER"),
+        ("fitness_level", "VARCHAR"),
+        ("training_preference", "VARCHAR"),
+        ("selected_program_id", "VARCHAR"),
+        ("goal", "VARCHAR"),
+        ("target_calories", "INTEGER"),
+        ("target_weight", "FLOAT"),
+        ("days_per_week", "INTEGER"),
+        ("session_duration_minutes", "INTEGER"),
+        ("target_protein", "INTEGER"),
+        ("target_carbs", "INTEGER"),
+        ("target_fat", "INTEGER"),
+        ("target_water", "FLOAT"),
+        ("target_fiber", "INTEGER"),
+        ("target_sugar", "INTEGER"),
+        ("body_condition", "VARCHAR"),
+        ("meals_per_day", "INTEGER"),
+        ("dietary_preference", "VARCHAR"),
+        ("target_steps", "INTEGER"),
+        ("target_sleep_minutes", "INTEGER"),
+        ("weight_unit", "VARCHAR"),
+        ("profile_image", "VARCHAR"),
+        ("status", "VARCHAR"),
+        ("primary_gym_location", "VARCHAR"),
+        ("enable_workout_videos", "BOOLEAN"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "exercises": [
+        ("external_id", "VARCHAR"),
+        ("name", "VARCHAR"),
+        ("description", "TEXT"),
+        ("instructions", "TEXT"),
+        ("form_cues", "TEXT"),
+        ("common_mistakes", "TEXT"),
+        ("primary_muscle", "VARCHAR"),
+        ("target_muscle", "VARCHAR"),
+        ("secondary_muscles", "VARCHAR"),
+        ("body_part", "VARCHAR"),
+        ("equipment", "VARCHAR"),
+        ("difficulty", "VARCHAR"),
+        ("movement_pattern", "VARCHAR"),
+        ("exercise_type", "VARCHAR"),
+        ("video_url", "VARCHAR"),
+        ("thumbnail_url", "VARCHAR"),
+        ("image_url", "VARCHAR"),
+        ("video_type", "VARCHAR"),
+        ("video_status", "VARCHAR"),
+        ("video_source", "VARCHAR"),
+        ("source", "VARCHAR"),
+        ("source_id", "VARCHAR"),
+        ("synced_at", "TIMESTAMP"),
+        ("active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "training_splits": [
+        ("description", "TEXT"),
+        ("min_days", "INTEGER"),
+        ("max_days", "INTEGER"),
+        ("recommended_level", "VARCHAR"),
+        ("active", "BOOLEAN"),
+        ("tenant_id", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "training_split_days": [
+        ("day_number", "INTEGER"),
+        ("name", "VARCHAR"),
+        ("muscle_groups", "VARCHAR"),
+    ],
+    "workout_programs": [
+        ("description", "TEXT"),
+        ("experience_level", "VARCHAR"),
+        ("duration_weeks", "INTEGER"),
+        ("days_per_week", "INTEGER"),
+        ("session_duration_minutes", "INTEGER"),
+        ("equipment", "VARCHAR"),
+        ("difficulty", "VARCHAR"),
+        ("progression_strategy", "VARCHAR"),
+        ("active", "BOOLEAN"),
+        ("created_by", "VARCHAR"),
+        ("tenant_id", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "workout_program_exercises": [
+        ("order_index", "INTEGER"),
+        ("sets", "INTEGER"),
+        ("reps_min", "INTEGER"),
+        ("reps_max", "INTEGER"),
+        ("target_reps", "INTEGER"),
+        ("rest_seconds", "INTEGER"),
+        ("rir", "INTEGER"),
+        ("tempo", "VARCHAR"),
+        ("notes", "TEXT"),
+        ("superset_group", "VARCHAR"),
+    ],
+    "customer_program_assignments": [
+        ("assigned_by", "VARCHAR"),
+        ("current_week", "INTEGER"),
+        ("current_day", "INTEGER"),
+        ("status", "VARCHAR"),
+        ("start_date", "TIMESTAMP"),
+        ("tenant_id", "VARCHAR"),
+    ],
+    "workout_programming_rules": [
+        ("sets_min", "INTEGER"),
+        ("sets_max", "INTEGER"),
+        ("rep_min", "INTEGER"),
+        ("rep_max", "INTEGER"),
+        ("rest_min_seconds", "INTEGER"),
+        ("rest_max_seconds", "INTEGER"),
+        ("target_rpe", "FLOAT"),
+        ("progression_method", "VARCHAR"),
+        ("is_active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "customer_workout_preferences": [
+        ("primary_goal", "VARCHAR"),
+        ("secondary_goal", "VARCHAR"),
+        ("experience_level", "VARCHAR"),
+        ("training_days_per_week", "INTEGER"),
+        ("preferred_session_duration_minutes", "INTEGER"),
+        ("available_equipment", "VARCHAR"),
+        ("weight_unit", "VARCHAR"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "workouts": [
+        ("trainer_id", "VARCHAR"),
+        ("program_id", "VARCHAR"),
+        ("description", "VARCHAR"),
+        ("goal", "VARCHAR"),
+        ("difficulty", "VARCHAR"),
+        ("duration", "INTEGER"),
+        ("status", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "workout_exercises": [
+        ("order_index", "INTEGER"),
+        ("rir", "INTEGER"),
+        ("target_muscle", "VARCHAR"),
+        ("exercise_name", "VARCHAR"),
+        ("rest_seconds", "INTEGER"),
+        ("completed", "BOOLEAN"),
+    ],
+    "workout_sessions": [
+        ("workout_id", "VARCHAR"),
+        ("program_id", "VARCHAR"),
+        ("name", "VARCHAR"),
+        ("status", "VARCHAR"),
+        ("duration_seconds", "INTEGER"),
+        ("total_volume_kg", "FLOAT"),
+        ("notes", "TEXT"),
+        ("started_at", "TIMESTAMP"),
+        ("completed_at", "TIMESTAMP"),
+    ],
+    "workout_session_exercises": [
+        ("exercise_id", "VARCHAR"),
+        ("exercise_name", "VARCHAR"),
+        ("target_muscle", "VARCHAR"),
+        ("set_number", "INTEGER"),
+        ("reps_completed", "INTEGER"),
+        ("weight_kg", "FLOAT"),
+        ("rest_seconds", "INTEGER"),
+        ("rpe", "FLOAT"),
+        ("rir", "INTEGER"),
+        ("completed", "BOOLEAN"),
+        ("logged_at", "TIMESTAMP"),
+    ],
+    "nutrition_logs": [
+        ("meal_type", "VARCHAR"),
+        ("calories", "FLOAT"),
+        ("protein", "FLOAT"),
+        ("carbs", "FLOAT"),
+        ("fats", "FLOAT"),
+        ("fiber", "FLOAT"),
+        ("sugar", "FLOAT"),
+        ("water", "FLOAT"),
+        ("micronutrients", "JSON"),
+        ("confidence", "FLOAT"),
+        ("notes", "VARCHAR"),
+    ],
+    "nutrition_log_items": [
+        ("quantity_g", "FLOAT"),
+        ("preparation", "VARCHAR"),
+        ("calories", "FLOAT"),
+        ("protein", "FLOAT"),
+        ("carbs", "FLOAT"),
+        ("fats", "FLOAT"),
+        ("fiber", "FLOAT"),
+        ("sugar", "FLOAT"),
+    ],
+    "inbody_reports": [
+        ("score", "INTEGER"),
+        ("weight", "FLOAT"),
+        ("skeletal_muscle_mass", "FLOAT"),
+        ("body_fat_percentage", "FLOAT"),
+        ("body_fat_mass", "FLOAT"),
+        ("visceral_fat", "FLOAT"),
+        ("bmi", "FLOAT"),
+        ("basal_metabolic_rate", "FLOAT"),
+        ("body_water", "FLOAT"),
+        ("protein", "FLOAT"),
+        ("segmental_analysis", "JSON"),
+    ],
+    "trainer_profiles": [
+        ("primary_gym_location", "VARCHAR"),
+        ("specialization", "VARCHAR"),
+        ("base_monthly_salary", "FLOAT"),
+        ("pt_session_rate", "FLOAT"),
+        ("bank_account_no", "VARCHAR"),
+        ("bank_ifsc", "VARCHAR"),
+        ("upi_id", "VARCHAR"),
+        ("is_active", "BOOLEAN"),
+    ],
+    "biometric_devices": [
+        ("external_device_id", "VARCHAR"),
+        ("serial_number", "VARCHAR"),
+        ("device_name", "VARCHAR"),
+        ("model_name", "VARCHAR"),
+        ("device_type", "VARCHAR"),
+        ("ip_address", "VARCHAR"),
+        ("port", "INTEGER"),
+        ("connection_type", "VARCHAR"),
+        ("mac_address", "VARCHAR"),
+        ("wifi_ssid", "VARCHAR"),
+        ("is_wireless", "BOOLEAN"),
+        ("status", "VARCHAR"),
+        ("location", "VARCHAR"),
+        ("meta_data", "JSON"),
+        ("last_seen_at", "TIMESTAMP"),
+        ("last_sync_at", "TIMESTAMP"),
+        ("created_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "health_connections": [
+        ("connected", "BOOLEAN"),
+        ("permissions", "JSON"),
+        ("last_sync_at", "TIMESTAMP"),
+        ("created_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "health_daily_summaries": [
+        ("steps", "INTEGER"),
+        ("distance_meters", "FLOAT"),
+        ("active_calories", "FLOAT"),
+        ("total_calories", "FLOAT"),
+        ("exercise_minutes", "INTEGER"),
+        ("workout_count", "INTEGER"),
+        ("avg_heart_rate", "INTEGER"),
+        ("resting_heart_rate", "INTEGER"),
+        ("readiness_score", "INTEGER"),
+        ("source", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "health_workouts": [
+        ("external_id", "VARCHAR"),
+        ("activity_type", "VARCHAR"),
+        ("start_time", "TIMESTAMP"),
+        ("end_time", "TIMESTAMP"),
+        ("duration_seconds", "INTEGER"),
+        ("distance_meters", "FLOAT"),
+        ("active_calories", "FLOAT"),
+        ("avg_heart_rate", "INTEGER"),
+        ("source", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "readiness_configs": [
+        ("version", "VARCHAR"),
+        ("steps_weight", "FLOAT"),
+        ("sleep_weight", "FLOAT"),
+        ("heart_rate_weight", "FLOAT"),
+        ("workout_weight", "FLOAT"),
+        ("step_target", "INTEGER"),
+        ("sleep_target_minutes", "INTEGER"),
+        ("resting_hr_optimal_min", "INTEGER"),
+        ("resting_hr_optimal_max", "INTEGER"),
+        ("resting_hr_elevated_threshold", "INTEGER"),
+        ("minimum_score", "INTEGER"),
+        ("maximum_score", "INTEGER"),
+        ("is_active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "membership_plans": [
+        ("category", "VARCHAR"),
+        ("color", "VARCHAR"),
+        ("badge", "VARCHAR"),
+        ("is_combo", "BOOLEAN"),
+        ("is_active", "BOOLEAN"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "hrms_geofence_schemes": [
+        ("branch_name", "VARCHAR"),
+        ("gym_name", "VARCHAR"),
+        ("latitude", "FLOAT"),
+        ("longitude", "FLOAT"),
+        ("radius_meters", "INTEGER"),
+        ("strict_restriction", "BOOLEAN"),
+        ("ip_whitelist", "VARCHAR"),
+        ("shift_start_time", "VARCHAR"),
+        ("shift_end_time", "VARCHAR"),
+        ("grace_period_mins", "INTEGER"),
+        ("min_half_day_hours", "FLOAT"),
+        ("allowed_channels", "JSON"),
+        ("assigned_employee_ids", "JSON"),
+        ("is_active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "trainer_profiles": [
+        ("gender", "VARCHAR"),
+    ],
+    "hrms_employees": [
+        ("gender", "VARCHAR"),
+        ("marital_status", "VARCHAR"),
+        ("probation_status", "VARCHAR"),
+    ],
+    "hrms_leaves": [
+        ("leave_type_id", "VARCHAR"),
+        ("paid_type", "VARCHAR"),
+        ("is_paid", "BOOLEAN"),
+        ("rejection_reason", "TEXT"),
+        ("attachment_url", "VARCHAR"),
+    ],
+    "hrms_leave_types": [
+        ("name", "VARCHAR"),
+        ("code", "VARCHAR"),
+        ("category", "VARCHAR"),
+        ("description", "TEXT"),
+        ("paid_type", "VARCHAR"),
+        ("is_paid", "BOOLEAN"),
+        ("gender_eligibility", "JSON"),
+        ("employment_types", "JSON"),
+        ("applicable_departments", "JSON"),
+        ("applicable_designations", "JSON"),
+        ("min_service_days", "INTEGER"),
+        ("annual_quota", "FLOAT"),
+        ("max_consecutive_days", "INTEGER"),
+        ("carry_forward_allowed", "BOOLEAN"),
+        ("max_carry_forward_days", "INTEGER"),
+        ("encashment_allowed", "BOOLEAN"),
+        ("max_encashment_days", "INTEGER"),
+        ("attachment_required", "BOOLEAN"),
+        ("is_active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "hrms_leave_balances": [
+        ("employee_id", "VARCHAR"),
+        ("leave_type_id", "VARCHAR"),
+        ("year", "INTEGER"),
+        ("allocated_days", "FLOAT"),
+        ("used_days", "FLOAT"),
+        ("pending_days", "FLOAT"),
+        ("buffer_days", "FLOAT"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "crm_marketing_ads": [
+        ("headline", "VARCHAR"),
+        ("prompt", "TEXT"),
+        ("aspect_ratio", "VARCHAR"),
+        ("model_used", "VARCHAR"),
+        ("image_url", "TEXT"),
+        ("caption", "TEXT"),
+        ("target_audience", "VARCHAR"),
+        ("status", "VARCHAR"),
+        ("platform", "VARCHAR"),
+        ("budget", "FLOAT"),
+        ("spent", "FLOAT"),
+        ("impressions", "INTEGER"),
+        ("clicks", "INTEGER"),
+        ("ctr", "FLOAT"),
+        ("leads_generated", "INTEGER"),
+        ("meta_campaign_id", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "crm_opportunities": [
+        ("lead_id", "VARCHAR"),
+        ("customer_id", "VARCHAR"),
+        ("name", "VARCHAR"),
+        ("customer_name", "VARCHAR"),
+        ("stage", "VARCHAR"),
+        ("amount", "FLOAT"),
+        ("probability", "INTEGER"),
+        ("expected_close_date", "TIMESTAMP"),
+        ("assigned_to", "VARCHAR"),
+        ("next_step", "VARCHAR"),
+        ("next_step_at", "TIMESTAMP"),
+        ("forecast_category", "VARCHAR"),
+        ("lost_reason", "VARCHAR"),
+        ("notes", "TEXT"),
+        ("call_disposition", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+    ],
+    "crm_quotations": [
+        ("quote_number", "VARCHAR"),
+        ("customer_id", "VARCHAR"),
+        ("customer_name", "VARCHAR"),
+        ("customer_phone", "VARCHAR"),
+        ("customer_email", "VARCHAR"),
+        ("items", "JSON"),
+        ("subtotal", "FLOAT"),
+        ("tax", "FLOAT"),
+        ("discount_amount", "FLOAT"),
+        ("total", "FLOAT"),
+        ("status", "VARCHAR"),
+        ("valid_until", "TIMESTAMP"),
+        ("notes", "TEXT"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "crm_sales_orders": [
+        ("order_number", "VARCHAR"),
+        ("customer_id", "VARCHAR"),
+        ("customer_name", "VARCHAR"),
+        ("customer_phone", "VARCHAR"),
+        ("items", "JSON"),
+        ("subtotal", "FLOAT"),
+        ("additional_charges", "JSON"),
+        ("tax", "FLOAT"),
+        ("total", "FLOAT"),
+        ("pricing_mode", "VARCHAR"),
+        ("status", "VARCHAR"),
+        ("payment_status", "VARCHAR"),
+        ("payment_mode", "VARCHAR"),
+        ("sales_rep", "VARCHAR"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "crm_discounts": [
+        ("name", "VARCHAR"),
+        ("code", "VARCHAR"),
+        ("description", "TEXT"),
+        ("discount_type", "VARCHAR"),
+        ("value", "FLOAT"),
+        ("min_order_value", "FLOAT"),
+        ("max_discount", "FLOAT"),
+        ("applicable_scope", "VARCHAR"),
+        ("applicable_products", "JSON"),
+        ("applicable_tiers", "JSON"),
+        ("usage_limit", "INTEGER"),
+        ("used_count", "INTEGER"),
+        ("per_customer_limit", "INTEGER"),
+        ("starts_at", "TIMESTAMP"),
+        ("ends_at", "TIMESTAMP"),
+        ("is_active", "BOOLEAN"),
+        ("created_at", "TIMESTAMP"),
+    ],
+    "crm_discount_usages": [
+        ("discount_id", "VARCHAR"),
+        ("discount_code", "VARCHAR"),
+        ("customer_id", "VARCHAR"),
+        ("customer_name", "VARCHAR"),
+        ("order_id", "VARCHAR"),
+        ("order_amount", "FLOAT"),
+        ("discount_amount", "FLOAT"),
+        ("used_at", "TIMESTAMP"),
+    ],
+    "crm_social_posts": [
+        ("post_id", "VARCHAR"),
+        ("platform", "VARCHAR"),
+        ("message", "TEXT"),
+        ("image_url", "TEXT"),
+        ("permalink_url", "TEXT"),
+        ("post_type", "VARCHAR"),
+        ("reactions", "INTEGER"),
+        ("likes", "INTEGER"),
+        ("comments", "INTEGER"),
+        ("shares", "INTEGER"),
+        ("reach", "INTEGER"),
+        ("clicks", "INTEGER"),
+        ("spend", "FLOAT"),
+        ("leads_count", "INTEGER"),
+        ("published_at", "TIMESTAMP"),
+        ("created_at", "TIMESTAMP"),
+    ],
+}
+
+
+def seed_default_leave_types(db):
+    """Seeds canonical enterprise leave policy types if not present in DB."""
+    from src.models.hrms import LeaveType
+    try:
+        defaults = [
+            {
+                "id": "lt_casual",
+                "name": "Casual Leave",
+                "code": "CL",
+                "category": "General Leave",
+                "description": "Short casual leaves for personal affairs, rest and errands.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 0,
+                "annual_quota": 12.0,
+                "max_consecutive_days": 3,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": False,
+                "is_active": True,
+            },
+            {
+                "id": "lt_sick",
+                "name": "Sick / Medical Leave",
+                "code": "SL",
+                "category": "Medical Leave",
+                "description": "Medical recuperation and sick leaves.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 0,
+                "annual_quota": 12.0,
+                "max_consecutive_days": 7,
+                "carry_forward_allowed": True,
+                "max_carry_forward_days": 10,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": True,
+                "is_active": True,
+            },
+            {
+                "id": "lt_earned",
+                "name": "Earned / Privilege Leave",
+                "code": "EL",
+                "category": "Privilege Leave",
+                "description": "Annual accrued vacation privilege leave.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PERMANENT"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 90,
+                "annual_quota": 15.0,
+                "max_consecutive_days": 15,
+                "carry_forward_allowed": True,
+                "max_carry_forward_days": 30,
+                "encashment_allowed": True,
+                "max_encashment_days": 15,
+                "attachment_required": False,
+                "is_active": True,
+            },
+            {
+                "id": "lt_maternity",
+                "name": "Maternity Leave",
+                "code": "ML",
+                "category": "Statutory / Parental Leave",
+                "description": "Statutory maternity benefit for female staff and expectant mothers.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["FEMALE"],
+                "employment_types": ["FULL_TIME", "PERMANENT", "CONTRACT"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 180,
+                "annual_quota": 180.0,
+                "max_consecutive_days": 180,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": True,
+                "is_active": True,
+            },
+            {
+                "id": "lt_paternity",
+                "name": "Paternity Leave",
+                "code": "PL",
+                "category": "Statutory / Parental Leave",
+                "description": "Statutory paternity benefit for male staff and new fathers.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE"],
+                "employment_types": ["FULL_TIME", "PERMANENT", "CONTRACT"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 180,
+                "annual_quota": 15.0,
+                "max_consecutive_days": 15,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": True,
+                "is_active": True,
+            },
+            {
+                "id": "lt_child_care",
+                "name": "Child Care Leave",
+                "code": "CCL",
+                "category": "Special Leave",
+                "description": "Leave granted for child care, exams and upbringing.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PERMANENT"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 365,
+                "annual_quota": 30.0,
+                "max_consecutive_days": 15,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": False,
+                "is_active": True,
+            },
+            {
+                "id": "lt_adoption",
+                "name": "Adoption Leave",
+                "code": "AL",
+                "category": "Special Leave",
+                "description": "Leave granted to adopting parents for legal procedures & bonding.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PERMANENT"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 180,
+                "annual_quota": 60.0,
+                "max_consecutive_days": 60,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": True,
+                "is_active": True,
+            },
+            {
+                "id": "lt_bereavement",
+                "name": "Bereavement Leave",
+                "code": "BL",
+                "category": "Special Leave",
+                "description": "Compassionate leave on demise of an immediate family member.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 0,
+                "annual_quota": 5.0,
+                "max_consecutive_days": 5,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": False,
+                "is_active": True,
+            },
+            {
+                "id": "lt_wedding",
+                "name": "Wedding Leave",
+                "code": "WL",
+                "category": "Special Leave",
+                "description": "Leave granted to staff members for their own wedding celebrations.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PERMANENT"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 180,
+                "annual_quota": 5.0,
+                "max_consecutive_days": 5,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": True,
+                "is_active": True,
+            },
+            {
+                "id": "lt_comp_off",
+                "name": "Compensatory Off",
+                "code": "COMP",
+                "category": "Compensatory",
+                "description": "Leave credited against extra hours or festival duty performed.",
+                "paid_type": "PAID",
+                "is_paid": True,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 0,
+                "annual_quota": 0.0,
+                "max_consecutive_days": 3,
+                "carry_forward_allowed": True,
+                "max_carry_forward_days": 10,
+                "encashment_allowed": True,
+                "max_encashment_days": 5,
+                "attachment_required": False,
+                "is_active": True,
+            },
+            {
+                "id": "lt_unpaid_lwp",
+                "name": "Leave Without Pay",
+                "code": "LWP",
+                "category": "Unpaid Leave",
+                "description": "Unpaid authorized absence with salary deduction (Loss of Pay).",
+                "paid_type": "UNPAID",
+                "is_paid": False,
+                "gender_eligibility": ["MALE", "FEMALE", "OTHER"],
+                "employment_types": ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"],
+                "applicable_departments": ["ALL"],
+                "applicable_designations": ["ALL"],
+                "min_service_days": 0,
+                "annual_quota": 0.0,
+                "max_consecutive_days": 90,
+                "carry_forward_allowed": False,
+                "max_carry_forward_days": 0,
+                "encashment_allowed": False,
+                "max_encashment_days": 0,
+                "attachment_required": False,
+                "is_active": True,
+            },
+        ]
+        for item in defaults:
+            row = db.query(LeaveType).filter((LeaveType.id == item["id"]) | (LeaveType.code == item["code"])).first()
+            if not row:
+                db.add(LeaveType(**item))
+            else:
+                row.name = item["name"]
+                row.code = item["code"]
+                row.category = item.get("category", "General Leave")
+                row.paid_type = item["paid_type"]
+                row.is_paid = item["is_paid"]
+                row.encashment_allowed = item.get("encashment_allowed", False)
+                row.max_encashment_days = item.get("max_encashment_days", 0)
+        db.commit()
+    except Exception as e:
+        print("[DB Migration Warning] Failed to seed default leave types:", e)
+        db.rollback()
 
 
 def run_database_migrations():
     """
-    Executes PostgreSQL DDL migrations to ensure all new columns and normalized tables exist cleanly.
-    Zero hardcoded default mock values or static seed fallbacks.
+    Ensures all tables and missing columns exist in the database.
+    Compatible with both SQLite and PostgreSQL.
+    Dynamically introspects all registered SQLAlchemy models and schema definitions.
     """
-    migrations_sql = """
-    -- Customers Table Migrations
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS height FLOAT;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS age INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS fitness_level VARCHAR;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS training_preference VARCHAR;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS selected_program_id VARCHAR;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS goal VARCHAR;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_calories INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_weight FLOAT;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS days_per_week INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS session_duration_minutes INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_protein INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_carbs INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_fat INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_water FLOAT;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_fiber INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_sugar INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS body_condition VARCHAR;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS meals_per_day INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS dietary_preference VARCHAR;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_steps INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS target_sleep_minutes INTEGER;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS weight_unit VARCHAR;
-
-    -- Workout Programming Rules Table Migration
-    CREATE TABLE IF NOT EXISTS workout_programming_rules (
-        id VARCHAR PRIMARY KEY,
-        goal VARCHAR NOT NULL,
-        experience_level VARCHAR NOT NULL,
-        exercise_type VARCHAR NOT NULL,
-        sets_min INTEGER NOT NULL,
-        sets_max INTEGER NOT NULL,
-        rep_min INTEGER NOT NULL,
-        rep_max INTEGER NOT NULL,
-        rest_min_seconds INTEGER NOT NULL,
-        rest_max_seconds INTEGER NOT NULL,
-        target_rpe FLOAT,
-        progression_method VARCHAR,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT uq_programming_rules UNIQUE (goal, experience_level, exercise_type)
-    );
-
-    -- Customer Workout Preferences Table Migration
-    CREATE TABLE IF NOT EXISTS customer_workout_preferences (
-        id VARCHAR PRIMARY KEY,
-        customer_id VARCHAR UNIQUE REFERENCES customers(id) ON DELETE CASCADE,
-        split_id VARCHAR REFERENCES training_splits(id),
-        primary_goal VARCHAR,
-        secondary_goal VARCHAR,
-        experience_level VARCHAR,
-        training_days_per_week INTEGER,
-        preferred_session_duration_minutes INTEGER,
-        available_equipment VARCHAR,
-        weight_unit VARCHAR,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Nutrition Logs Table Migrations
-    ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS fiber FLOAT;
-    ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS sugar FLOAT;
-    ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS water FLOAT;
-    ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS micronutrients JSONB;
-    ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS confidence FLOAT;
-    ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS notes VARCHAR;
-
-    -- Nutrition Log Items Migrations
-    ALTER TABLE nutrition_log_items ADD COLUMN IF NOT EXISTS fiber FLOAT;
-    ALTER TABLE nutrition_log_items ADD COLUMN IF NOT EXISTS sugar FLOAT;
-
-    -- InBody Reports Migrations
-    ALTER TABLE inbody_reports ADD COLUMN IF NOT EXISTS segmental_analysis JSONB;
-
-    -- Trainer Profiles Migrations
-    ALTER TABLE trainer_profiles ADD COLUMN IF NOT EXISTS primary_gym_location VARCHAR;
-
-    -- Biometric Devices Migrations
-    CREATE TABLE IF NOT EXISTS biometric_devices (
-        id VARCHAR PRIMARY KEY,
-        external_device_id VARCHAR,
-        serial_number VARCHAR,
-        device_name VARCHAR,
-        model_name VARCHAR,
-        device_type VARCHAR,
-        ip_address VARCHAR,
-        port INTEGER,
-        connection_type VARCHAR,
-        mac_address VARCHAR,
-        wifi_ssid VARCHAR,
-        is_wireless BOOLEAN,
-        status VARCHAR,
-        location VARCHAR,
-        meta_data JSONB,
-        last_seen_at TIMESTAMP,
-        last_sync_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS external_device_id VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS device_name VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS model_name VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS device_type VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS ip_address VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS port INTEGER;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS connection_type VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS mac_address VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS wifi_ssid VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS is_wireless BOOLEAN;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS status VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS location VARCHAR;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS meta_data JSONB;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMP;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-    ALTER TABLE biometric_devices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-
-    -- Exercise Library Table Migration
-    CREATE TABLE IF NOT EXISTS exercises (
-        id VARCHAR PRIMARY KEY,
-        external_id VARCHAR,
-        name VARCHAR NOT NULL,
-        description TEXT,
-        instructions TEXT,
-        form_cues TEXT,
-        common_mistakes TEXT,
-        primary_muscle VARCHAR NOT NULL,
-        secondary_muscles VARCHAR,
-        body_part VARCHAR,
-        equipment VARCHAR NOT NULL,
-        difficulty VARCHAR,
-        movement_pattern VARCHAR,
-        exercise_type VARCHAR,
-        video_url VARCHAR,
-        thumbnail_url VARCHAR,
-        image_url VARCHAR,
-        source VARCHAR,
-        source_id VARCHAR,
-        active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS external_id VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS description TEXT;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS form_cues TEXT;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS common_mistakes TEXT;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS primary_muscle VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS target_muscle VARCHAR;
-    ALTER TABLE exercises ALTER COLUMN target_muscle DROP NOT NULL;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS body_part VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS movement_pattern VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS exercise_type VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS source VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS source_id VARCHAR;
-    ALTER TABLE exercises ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
-
-    -- Training Splits Table Migration
-    CREATE TABLE IF NOT EXISTS training_splits (
-        id VARCHAR PRIMARY KEY,
-        name VARCHAR NOT NULL UNIQUE,
-        description TEXT,
-        min_days INTEGER,
-        max_days INTEGER,
-        recommended_level VARCHAR,
-        active BOOLEAN DEFAULT TRUE,
-        tenant_id VARCHAR,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ALTER TABLE training_splits ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
-    ALTER TABLE training_splits ADD COLUMN IF NOT EXISTS tenant_id VARCHAR;
-
-    -- Training Split Days Table Migration
-    CREATE TABLE IF NOT EXISTS training_split_days (
-        id VARCHAR PRIMARY KEY,
-        split_id VARCHAR NOT NULL REFERENCES training_splits(id) ON DELETE CASCADE,
-        day_number INTEGER NOT NULL,
-        name VARCHAR NOT NULL,
-        muscle_groups VARCHAR NOT NULL
-    );
-
-    -- Workout Programs Table Migration
-    CREATE TABLE IF NOT EXISTS workout_programs (
-        id VARCHAR PRIMARY KEY,
-        name VARCHAR NOT NULL,
-        description TEXT,
-        goal VARCHAR NOT NULL,
-        training_split_id VARCHAR REFERENCES training_splits(id),
-        experience_level VARCHAR,
-        duration_weeks INTEGER,
-        days_per_week INTEGER,
-        session_duration_minutes INTEGER,
-        equipment VARCHAR,
-        difficulty VARCHAR,
-        progression_strategy VARCHAR,
-        active BOOLEAN DEFAULT TRUE,
-        created_by VARCHAR,
-        tenant_id VARCHAR,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS experience_level VARCHAR;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS difficulty VARCHAR;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS equipment VARCHAR;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS progression_strategy VARCHAR;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS session_duration_minutes INTEGER;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS created_by VARCHAR;
-    ALTER TABLE workout_programs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR;
-    ALTER TABLE workouts ADD COLUMN IF NOT EXISTS program_id VARCHAR;
-    ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS order_index INTEGER;
-    ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS rir INTEGER;
-    ALTER TABLE workout_sessions ADD COLUMN IF NOT EXISTS program_id VARCHAR;
-
-    -- Workout Program Weeks Table Migration
-    CREATE TABLE IF NOT EXISTS workout_program_weeks (
-        id VARCHAR PRIMARY KEY,
-        program_id VARCHAR NOT NULL REFERENCES workout_programs(id) ON DELETE CASCADE,
-        week_number INTEGER NOT NULL,
-        week_name VARCHAR NOT NULL
-    );
-
-    -- Workout Program Days Table Migration
-    CREATE TABLE IF NOT EXISTS workout_program_days (
-        id VARCHAR PRIMARY KEY,
-        program_week_id VARCHAR NOT NULL REFERENCES workout_program_weeks(id) ON DELETE CASCADE,
-        day_number INTEGER NOT NULL,
-        day_name VARCHAR NOT NULL,
-        split_day_id VARCHAR REFERENCES training_split_days(id)
-    );
-
-    -- Workout Program Exercises Table Migration
-    CREATE TABLE IF NOT EXISTS workout_program_exercises (
-        id VARCHAR PRIMARY KEY,
-        program_day_id VARCHAR NOT NULL REFERENCES workout_program_weeks(id) ON DELETE CASCADE,
-        exercise_id VARCHAR NOT NULL REFERENCES exercises(id),
-        order_index INTEGER,
-        sets INTEGER,
-        reps_min INTEGER,
-        reps_max INTEGER,
-        target_reps INTEGER,
-        rest_seconds INTEGER,
-        rir INTEGER,
-        tempo VARCHAR,
-        notes TEXT,
-        superset_group VARCHAR
-    );
-
-    -- Customer Program Assignments Table Migration
-    CREATE TABLE IF NOT EXISTS customer_program_assignments (
-        id VARCHAR PRIMARY KEY,
-        customer_id VARCHAR NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-        program_id VARCHAR NOT NULL REFERENCES workout_programs(id) ON DELETE CASCADE,
-        assigned_by VARCHAR,
-        current_week INTEGER,
-        current_day INTEGER,
-        status VARCHAR,
-        start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        tenant_id VARCHAR
-    );
-
-    -- Workout Sessions Table Migration
-    CREATE TABLE IF NOT EXISTS workout_sessions (
-        id VARCHAR PRIMARY KEY,
-        customer_id VARCHAR NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-        workout_id VARCHAR,
-        program_id VARCHAR REFERENCES workout_programs(id),
-        name VARCHAR NOT NULL,
-        status VARCHAR,
-        duration_seconds INTEGER,
-        total_volume_kg FLOAT,
-        notes TEXT,
-        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Workout Session Exercises Table Migration
-    CREATE TABLE IF NOT EXISTS workout_session_exercises (
-        id VARCHAR PRIMARY KEY,
-        session_id VARCHAR NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
-        exercise_id VARCHAR REFERENCES exercises(id),
-        exercise_name VARCHAR NOT NULL,
-        target_muscle VARCHAR,
-        set_number INTEGER NOT NULL,
-        reps_completed INTEGER NOT NULL,
-        weight_kg FLOAT NOT NULL,
-        rest_seconds INTEGER,
-        rpe FLOAT,
-        rir INTEGER,
-        completed BOOLEAN DEFAULT TRUE,
-        logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ALTER TABLE workout_session_exercises ADD COLUMN IF NOT EXISTS rpe FLOAT;
-    ALTER TABLE workout_session_exercises ADD COLUMN IF NOT EXISTS logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-    ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS target_muscle VARCHAR;
-    ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS exercise_name VARCHAR;
-
-    -- Health Connections Table Migration
-    CREATE TABLE IF NOT EXISTS health_connections (
-        id VARCHAR PRIMARY KEY,
-        customer_id VARCHAR NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-        platform VARCHAR NOT NULL,
-        connected BOOLEAN DEFAULT TRUE,
-        permissions JSON,
-        last_sync_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Health Daily Summaries Table Migration
-    CREATE TABLE IF NOT EXISTS health_daily_summaries (
-        id VARCHAR PRIMARY KEY,
-        customer_id VARCHAR NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-        date DATE NOT NULL,
-        steps INTEGER,
-        distance_meters FLOAT,
-        active_calories FLOAT,
-        total_calories FLOAT,
-        exercise_minutes INTEGER,
-        workout_count INTEGER,
-        avg_heart_rate INTEGER,
-        resting_heart_rate INTEGER,
-        readiness_score INTEGER,
-        source VARCHAR,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Health Workouts Table Migration
-    CREATE TABLE IF NOT EXISTS health_workouts (
-        id VARCHAR PRIMARY KEY,
-        customer_id VARCHAR NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-        external_id VARCHAR,
-        activity_type VARCHAR NOT NULL,
-        start_time TIMESTAMP NOT NULL,
-        end_time TIMESTAMP NOT NULL,
-        duration_seconds INTEGER,
-        distance_meters FLOAT,
-        active_calories FLOAT,
-        avg_heart_rate INTEGER,
-        source VARCHAR,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Readiness Configs Table Migration
-    CREATE TABLE IF NOT EXISTS readiness_configs (
-        id VARCHAR PRIMARY KEY,
-        name VARCHAR NOT NULL,
-        version VARCHAR NOT NULL,
-        steps_weight FLOAT,
-        sleep_weight FLOAT,
-        heart_rate_weight FLOAT,
-        workout_weight FLOAT,
-        step_target INTEGER,
-        sleep_target_minutes INTEGER,
-        resting_hr_optimal_min INTEGER,
-        resting_hr_optimal_max INTEGER,
-        resting_hr_elevated_threshold INTEGER,
-        minimum_score INTEGER,
-        maximum_score INTEGER,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    ALTER TABLE readiness_configs ADD COLUMN IF NOT EXISTS minimum_score INTEGER;
-    ALTER TABLE readiness_configs ADD COLUMN IF NOT EXISTS maximum_score INTEGER;
-
-    -- Geofence Schemes Table Migration
-    CREATE TABLE IF NOT EXISTS hrms_geofence_schemes (
-        id VARCHAR PRIMARY KEY,
-        name VARCHAR NOT NULL UNIQUE,
-        branch_name VARCHAR,
-        gym_name VARCHAR,
-        latitude FLOAT,
-        longitude FLOAT,
-        radius_meters INTEGER,
-        strict_restriction BOOLEAN DEFAULT FALSE,
-        ip_whitelist VARCHAR DEFAULT '',
-        shift_start_time VARCHAR,
-        shift_end_time VARCHAR,
-        grace_period_mins INTEGER DEFAULT 0,
-        min_half_day_hours FLOAT,
-        allowed_channels JSON DEFAULT '[]',
-        assigned_employee_ids JSON DEFAULT '[]',
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    COMMIT;
-    """
-
     try:
-        with engine.connect() as conn:
-            conn.execute(text(migrations_sql))
-            conn.commit()
+        # 1. Create any completely missing tables first via Base.metadata
+        Base.metadata.create_all(bind=engine)
 
-            print("✅ PostgreSQL Database Schema Migration Completed (Zero Hardcoded Default Data)!")
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+
+        added_columns_count = 0
+
+        with engine.connect() as conn:
+            # First pass: check explicit SCHEMA_COLUMNS mapping
+            for table_name, columns in SCHEMA_COLUMNS.items():
+                if table_name not in existing_tables:
+                    continue
+
+                existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
+
+                for col_name, col_type in columns:
+                    if col_name not in existing_cols:
+                        try:
+                            alter_sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+                            conn.execute(text(alter_sql))
+                            conn.commit()
+                            existing_cols.add(col_name)
+                            added_columns_count += 1
+                        except Exception as col_err:
+                            conn.rollback()
+                            print(f"[DB Migration Notice] Column {table_name}.{col_name} skipped: {col_err}")
+
+            # Second pass: check all registered SQLAlchemy models in Base.metadata.tables
+            for table_name, table_obj in Base.metadata.tables.items():
+                if table_name not in existing_tables:
+                    continue
+
+                existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
+
+                for col in table_obj.columns:
+                    col_name = col.name
+                    if col_name not in existing_cols:
+                        try:
+                            # Compile SQL column type
+                            col_type = col.type.compile(engine.dialect)
+                            alter_sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+                            conn.execute(text(alter_sql))
+                            conn.commit()
+                            existing_cols.add(col_name)
+                            added_columns_count += 1
+                        except Exception as col_err:
+                            conn.rollback()
+                            print(f"[DB Migration Notice] Model column {table_name}.{col_name} skipped: {col_err}")
+
+        # 3. Seed canonical leave policies if not present
+        from src.database.session import SessionLocal
+        seed_db = SessionLocal()
+        try:
+            seed_default_leave_types(seed_db)
+        finally:
+            seed_db.close()
+
+        if added_columns_count > 0:
+            print(f"✅ Database Schema Migration Completed ({added_columns_count} missing columns added)!")
+        else:
+            print("✅ Database Schema Integrity Verified — All tables and columns up to date!")
+
     except Exception as e:
         print(f"[DB Migration Warning] {e}")
 
 
 if __name__ == "__main__":
     run_database_migrations()
+

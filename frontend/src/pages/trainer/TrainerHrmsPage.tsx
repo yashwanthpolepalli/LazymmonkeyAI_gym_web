@@ -5,7 +5,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonCard, Skeleton } from '@/components/ui/Skeleton';
 import { TrainerGeofencePunchWidget } from '@/components/trainer/TrainerGeofencePunchWidget';
-import { hrmsApi, type LeaveItem, type PayrollItem } from '@/services/hrmsApi';
+import { hrmsApi, formatLeaveOptionLabel, type LeaveItem, type PayrollItem, type EligibleLeaveType } from '@/services/hrmsApi';
 import { apiClient } from '@/services/apiClient';
 import { api } from '@/services/api';
 import { cn } from '@/utils/cn';
@@ -19,6 +19,7 @@ interface TrainerProfileData {
   email: string;
   phone?: string;
   role: string;
+  gender?: string;
   specialization?: string;
   base_monthly_salary: number;
   pt_session_rate: number;
@@ -43,6 +44,7 @@ export function TrainerHrmsPage() {
 
   const [trainerProfile, setTrainerProfile] = useState<TrainerProfileData | null>(null);
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
+  const [eligibleLeaveTypes, setEligibleLeaveTypes] = useState<EligibleLeaveType[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollItem[]>([]);
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
   const [customerCheckins, setCustomerCheckins] = useState<any[]>([]);
@@ -51,10 +53,12 @@ export function TrainerHrmsPage() {
   // Apply Leave Modal State
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
+  const [formLeaveTypeId, setFormLeaveTypeId] = useState('');
   const [formLeaveType, setFormLeaveType] = useState('Casual Leave');
   const [formStartDate, setFormStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [formEndDate, setFormEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [formReason, setFormReason] = useState('');
+  const [formAttachmentUrl, setFormAttachmentUrl] = useState('');
   const [formError, setFormError] = useState('');
 
   // Payslip Modal State
@@ -87,11 +91,27 @@ export function TrainerHrmsPage() {
 
       setTrainerProfile(matchedTrainer);
 
+      const tid = matchedTrainer?.id || user?.id || '';
+      const tname = matchedTrainer?.full_name || user?.name || '';
+
+      // Fetch eligible leave types for this trainer (respects gender, service days, owner config)
+      if (tid) {
+        try {
+          const eligRes = await hrmsApi.getEligibleLeaveTypes(tid);
+          const types = eligRes?.eligible_leave_types || [];
+          setEligibleLeaveTypes(types);
+          if (types.length > 0) {
+            setFormLeaveTypeId(types[0].id);
+            setFormLeaveType(types[0].name);
+          }
+        } catch (err) {
+          console.error('Failed to fetch eligible leave types for trainer:', err);
+        }
+      }
+
       // Filter leaves for this trainer
       const myLeaves = leavesRes.filter((l) => {
         if (!matchedTrainer && !user) return true;
-        const tid = matchedTrainer?.id || user?.id || '';
-        const tname = matchedTrainer?.full_name || user?.name || '';
         return (
           l.employee_id === tid ||
           l.employee_id === `emp_${tid}` ||
@@ -103,8 +123,6 @@ export function TrainerHrmsPage() {
       // Filter payroll for this trainer
       const myPayroll = payrollRes.filter((p) => {
         if (!matchedTrainer && !user) return true;
-        const tid = matchedTrainer?.id || user?.id || '';
-        const tname = matchedTrainer?.full_name || user?.name || '';
         return (
           p.trainer_id === tid ||
           p.employee_id === tid ||
@@ -116,27 +134,35 @@ export function TrainerHrmsPage() {
 
       // Filter biometric punches for this specific trainer
       if (Array.isArray(biometricsRes)) {
-        const tid = matchedTrainer?.id || user?.id || '';
-        const tname = matchedTrainer?.full_name || user?.name || '';
-
-        const myPunches = biometricsRes.filter((b: any) => {
-          const role = (b.user_role || b.meta_data?.user_role || '').toUpperCase();
-          const name = b.customer_name || b.person_name || b.meta_data?.user_name || '';
-          const uid = b.customer_id || b.meta_data?.user_id || '';
-
-          const isStaffRole = role.includes('TRAINER') || role.includes('STAFF') || role.includes('EMPLOYEE');
-          const isMe = (uid && tid && (uid === tid || uid === `emp_${tid}`)) || (name && tname && name.toLowerCase() === tname.toLowerCase());
-
-          // If role is trainer/staff and matches this trainer's id or name
-          return isStaffRole && (isMe || !tid);
+        const myAttendance = biometricsRes.filter((log: any) => {
+          if (!matchedTrainer && !user) return true;
+          return (
+            log.customer_id === tid ||
+            log.customer_id === `emp_${tid}` ||
+            (log.meta_data?.user_id && log.meta_data.user_id === tid) ||
+            (log.customer_name && tname && log.customer_name.toLowerCase() === tname.toLowerCase())
+          );
         });
-        setAttendanceLogs(myPunches);
+        setAttendanceLogs(myAttendance);
+      }
 
-        // Customer check-ins
-        const custLogs = biometricsRes.filter((b: any) => {
-          const role = (b.user_role || b.meta_data?.user_role || '').toUpperCase();
-          return role === 'CUSTOMER' || !role;
+      // Customers assigned to this trainer
+      if (customersRes && Array.isArray(customersRes)) {
+        const myCustomers = customersRes.filter((c: any) => {
+          if (!matchedTrainer && !user) return false;
+          return (
+            c.assigned_trainer_id === tid ||
+            c.trainer_id === tid ||
+            (c.assigned_trainer && tname && c.assigned_trainer.toLowerCase() === tname.toLowerCase())
+          );
         });
+        const assignedCustIds = new Set(myCustomers.map((c: any) => c.id));
+        const custLogs = (biometricsRes || []).filter(
+          (log: any) =>
+            log.customer_id &&
+            assignedCustIds.has(log.customer_id) &&
+            log.event_type !== 'FACE_ENROLLMENT'
+        );
         setCustomerCheckins(custLogs);
       }
     } catch (err) {
@@ -168,20 +194,29 @@ export function TrainerHrmsPage() {
       const empId = trainerProfile?.id || user?.id || 'trainer_001';
       await hrmsApi.applyLeave({
         employee_id: empId,
+        leave_type_id: formLeaveTypeId || undefined,
         leave_type: formLeaveType,
         start_date: formStartDate,
         end_date: formEndDate,
         reason: formReason.trim(),
+        attachment_url: formAttachmentUrl.trim() || undefined,
       });
       triggerToast('Leave application submitted successfully! Awaiting owner review.');
       setShowApplyModal(false);
       setFormReason('');
+      setFormAttachmentUrl('');
 
-      // Refresh leaves
-      const updated = await hrmsApi.getLeaves();
+      // Refresh leaves & eligible quotas
+      const [updated, eligRes] = await Promise.all([
+        hrmsApi.getLeaves(),
+        hrmsApi.getEligibleLeaveTypes(empId).catch(() => null),
+      ]);
       setLeaves(updated || []);
+      if (eligRes?.eligible_leave_types) {
+        setEligibleLeaveTypes(eligRes.eligible_leave_types);
+      }
     } catch (err: any) {
-      setFormError(err?.message || 'Failed to submit leave request.');
+      setFormError(err?.response?.data?.detail || err?.message || 'Failed to submit leave request.');
     } finally {
       setSubmittingLeave(false);
     }
@@ -368,34 +403,41 @@ export function TrainerHrmsPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'leave' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Leave Balances Header Cards */}
+          {/* Dynamic Leave Balances Header Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-navy-100 shadow-sm">
-              <div className="text-xs font-bold text-navy-500 uppercase tracking-wider mb-2">Casual Leaves (CL)</div>
-              <div className="text-2xl font-black text-purple-700">12 Days</div>
-              <div className="text-[11px] text-navy-400 mt-1">Annual allowance</div>
-            </div>
+            {eligibleLeaveTypes.slice(0, 3).map((policy) => {
+              const rem = policy.balance?.remaining_days ?? policy.annual_quota;
+              const isPaid = policy.paid_type === 'PAID' || policy.is_paid;
+              return (
+                <div key={policy.id} className="bg-white rounded-2xl p-5 border border-navy-100 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-navy-500 uppercase tracking-wider">{policy.name} ({policy.code})</span>
+                    <span
+                      className={cn(
+                        'text-[9px] font-black px-1.5 py-0.2 rounded',
+                        isPaid ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'
+                      )}
+                    >
+                      {isPaid ? 'PAID' : 'UNPAID'}
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-purple-700">{rem} Days</div>
+                  <div className="text-[11px] text-navy-400 mt-1">
+                    {policy.annual_quota > 0 ? `${policy.balance?.used_days || 0}d used of ${policy.annual_quota}d quota` : 'Unlimited quota'}
+                  </div>
+                </div>
+              );
+            })}
 
-            <div className="bg-white rounded-2xl p-5 border border-navy-100 shadow-sm">
-              <div className="text-xs font-bold text-navy-500 uppercase tracking-wider mb-2">Sick Leaves (SL)</div>
-              <div className="text-2xl font-black text-emerald-600">8 Days</div>
-              <div className="text-[11px] text-navy-400 mt-1">Medical coverage</div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-navy-100 shadow-sm">
-              <div className="text-xs font-bold text-navy-500 uppercase tracking-wider mb-2">Leaves Taken</div>
-              <div className="text-2xl font-black text-amber-600">
-                {leaves.filter((l) => l.status === 'Approved').reduce((acc, l) => acc + (l.days || 0), 0)} Days
-              </div>
-              <div className="text-[11px] text-amber-700 font-bold mt-1">Approved this year</div>
-            </div>
-
+            {/* Pending Approvals Summary */}
             <div className="bg-white rounded-2xl p-5 border border-navy-100 shadow-sm">
               <div className="text-xs font-bold text-navy-500 uppercase tracking-wider mb-2">Pending Approvals</div>
-              <div className="text-2xl font-black text-navy-900">
+              <div className="text-2xl font-black text-amber-600">
                 {leaves.filter((l) => l.status === 'Pending').length} Request(s)
               </div>
-              <div className="text-[11px] text-navy-400 mt-1">Awaiting owner action</div>
+              <div className="text-[11px] text-amber-700 font-bold mt-1">
+                {leaves.filter((l) => l.status === 'Approved').reduce((acc, l) => acc + (l.days || 0), 0)} days approved this year
+              </div>
             </div>
           </div>
 
@@ -665,20 +707,58 @@ export function TrainerHrmsPage() {
             )}
 
             <form onSubmit={handleApplyLeave} className="space-y-4">
-              {/* Leave Type */}
+              {/* Dynamic Leave Policy Selector */}
               <div>
-                <label className="block text-xs font-bold text-navy-700 mb-1.5">Leave Type</label>
+                <label className="block text-xs font-bold text-navy-700 mb-1.5">Eligible Leave Policy</label>
                 <select
-                  value={formLeaveType}
-                  onChange={(e) => setFormLeaveType(e.target.value)}
+                  value={formLeaveTypeId}
+                  onChange={(e) => {
+                    const selId = e.target.value;
+                    setFormLeaveTypeId(selId);
+                    const match = eligibleLeaveTypes.find((t) => t.id === selId);
+                    if (match) setFormLeaveType(match.name);
+                  }}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-navy-50 border border-navy-200 text-xs font-bold text-navy-900 focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer"
                 >
-                  <option value="Casual Leave">🏖️ Casual Leave (CL)</option>
-                  <option value="Sick Leave">🏥 Sick Leave (SL)</option>
-                  <option value="Paid Leave">⭐ Paid Leave (PL)</option>
-                  <option value="Unpaid Leave">⚠️ Unpaid Leave (LWP)</option>
-                  <option value="Emergency Leave">🚨 Emergency Leave</option>
+                  {eligibleLeaveTypes.length === 0 ? (
+                    <option value="">No eligible policies found</option>
+                  ) : (
+                    eligibleLeaveTypes.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {formatLeaveOptionLabel(t)}
+                      </option>
+                    ))
+                  )}
                 </select>
+
+                {/* Selected Policy Details Banner */}
+                {(() => {
+                  const sel = eligibleLeaveTypes.find((t) => t.id === formLeaveTypeId);
+                  if (!sel) return null;
+                  return (
+                    <div className="mt-2 p-2.5 rounded-xl bg-purple-50/70 border border-purple-100 text-[11px] text-purple-900 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold">
+                          {sel.paid_type === 'PAID' || sel.is_paid
+                            ? '💰 Fully Paid Leave'
+                            : sel.paid_type === 'HALF_PAY'
+                            ? '½ Half Pay Leave'
+                            : '⚠️ Unpaid / Loss of Pay'}
+                        </span>
+                        <span>
+                          Remaining: <strong>{sel.balance?.remaining_days ?? sel.annual_quota} Days</strong>
+                        </span>
+                      </div>
+                      {sel.description && <p className="text-purple-700 text-[10px]">{sel.description}</p>}
+                      {sel.attachment_required && (
+                        <div className="text-amber-800 text-[10px] font-bold flex items-center gap-1 pt-0.5">
+                          <Icon name="alert-triangle" size={11} />
+                          <span>Medical certificate or proof link is required for this leave type.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Dates */}
@@ -707,11 +787,25 @@ export function TrainerHrmsPage() {
               <div>
                 <label className="block text-xs font-bold text-navy-700 mb-1.5">Reason for Absence</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={formReason}
                   onChange={(e) => setFormReason(e.target.value)}
                   placeholder="e.g. Personal emergency, family event, medical rest..."
                   className="w-full px-3.5 py-2 rounded-xl bg-navy-50 border border-navy-200 text-xs font-medium text-navy-900 placeholder-navy-400 focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none resize-none"
+                />
+              </div>
+
+              {/* Attachment URL */}
+              <div>
+                <label className="block text-xs font-bold text-navy-700 mb-1.5">
+                  Supporting Document / Certificate URL
+                </label>
+                <input
+                  type="text"
+                  value={formAttachmentUrl}
+                  onChange={(e) => setFormAttachmentUrl(e.target.value)}
+                  placeholder="https://... or medical slip link"
+                  className="w-full px-3.5 py-2 rounded-xl bg-navy-50 border border-navy-200 text-xs font-medium text-navy-900 placeholder-navy-400 focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
                 />
               </div>
 

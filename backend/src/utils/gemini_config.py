@@ -29,10 +29,10 @@ from dotenv import load_dotenv
 # ── Currently available Gemini models (updated per Google API guidance) ──────
 # Order: most capable → lightest. All verified available on Gemini API.
 _SAFE_DEFAULTS = [
-    "gemini-2.0-flash",        # Primary: stable, fast, multimodal
-    "gemini-2.5-flash",        # Good capability tier
-    "gemini-3.5-flash-lite",   # Recommended by Google as replacement for 2.5-flash-lite
-    "gemini-2.0-flash-lite",   # Lightweight fallback (may have quota limits)
+    "gemini-3.6-flash",        # Primary: Google recommended stable latest model
+    "gemini-3.5-flash",        # High performance multimodal model
+    "gemini-3.5-flash-lite",   # Fast lightweight model
+    "gemini-flash-latest",     # Latest flash alias
 ]
 
 
@@ -52,11 +52,11 @@ def get_gemini_key() -> str:
 def get_primary_model() -> str:
     """
     Returns the primary Gemini model name from .env (GEMINI_MODEL).
-    Falls back to gemini-2.0-flash if the variable is empty or unset.
+    Falls back to gemini-3.6-flash if the variable is empty or unset.
     """
     load_dotenv(override=True)
     model = os.getenv("GEMINI_MODEL", "").strip().strip('"').strip("'")
-    return model if model else "gemini-3.5-flash-lite"
+    return model if model else "gemini-3.6-flash"
 
 
 def build_gemini_fallback_list() -> list[str]:
@@ -71,8 +71,8 @@ def build_gemini_fallback_list() -> list[str]:
     Duplicate entries are removed while preserving order.
 
     Example .env:
-        GEMINI_MODEL=gemini-2.0-flash
-        GEMINI_FALLBACK_MODELS=gemini-2.0-flash,gemini-2.0-flash-lite,gemini-2.5-flash,gemini-2.5-flash-lite
+        GEMINI_MODEL=gemini-3.6-flash
+        GEMINI_FALLBACK_MODELS=gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-flash-latest
     """
     load_dotenv(override=True)
 

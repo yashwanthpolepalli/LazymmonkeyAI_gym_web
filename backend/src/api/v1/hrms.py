@@ -356,10 +356,69 @@ def apply_leave(payload: dict, db: Session = Depends(get_db)):
 def update_leave_status(leave_id: str, payload: dict, db: Session = Depends(get_db)):
     status = payload.get("status", "Approved")
     reviewer = payload.get("reviewer", "Gym Owner")
+    rejection_reason = payload.get("rejection_reason")
     try:
-        return HrmsService.update_leave_status(db, leave_id, status, reviewer)
+        return HrmsService.update_leave_status(db, leave_id, status, reviewer, rejection_reason=rejection_reason)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+# Leave Policy & Customization Endpoints (Samarth LMS standard)
+@router.get("/leave-types")
+def get_leave_types(active_only: bool = False, db: Session = Depends(get_db)):
+    """Retrieve all configurable leave policies / types"""
+    return HrmsService.get_leave_types(db, active_only=active_only)
+
+@router.post("/leave-types")
+def create_leave_type(payload: dict, db: Session = Depends(get_db)):
+    """Gym owner creates a new customizable leave policy with dynamic gender eligibility"""
+    try:
+        return HrmsService.create_leave_type(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/leave-types/{leave_type_id}")
+def update_leave_type(leave_type_id: str, payload: dict, db: Session = Depends(get_db)):
+    """Gym owner updates an existing leave policy (gender, quota, paid type, etc.)"""
+    try:
+        return HrmsService.update_leave_type(db, leave_type_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/leave-types/{leave_type_id}")
+def delete_leave_type(leave_type_id: str, db: Session = Depends(get_db)):
+    """Gym owner deactivates or removes a leave policy"""
+    try:
+        return HrmsService.delete_leave_type(db, leave_type_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.get("/leave-types/eligible/{employee_id}")
+def get_eligible_leave_types_for_employee(employee_id: str, db: Session = Depends(get_db)):
+    """Fetch all leave types eligible for a specific employee based on gender, service days, and department"""
+    try:
+        return HrmsService.get_eligible_leave_types_for_employee(db, employee_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/leave-balances")
+def get_leave_balances(year: Optional[int] = None, db: Session = Depends(get_db)):
+    """Get leave balances matrix for all staff"""
+    return HrmsService.get_leave_balances_matrix(db, year=year)
+
+@router.post("/leave-balances/adjust")
+def adjust_leave_balance(payload: dict, db: Session = Depends(get_db)):
+    """Gym owner manually adjusts leave balance (allotted / used days) for an employee"""
+    try:
+        return HrmsService.adjust_leave_balance(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 # -------------------------------------------------------------
 # 5. PAYROLL ENDPOINTS

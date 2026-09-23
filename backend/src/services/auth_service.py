@@ -18,18 +18,29 @@ def _fetch_gym_context(db: Session, user: User = None) -> dict:
     branch = None
 
     if user:
-        # Check Customer primary gym location mapping
-        cust = db.query(Customer).filter(Customer.user_id == user.id).first()
-        if not cust:
-            cust = db.query(Customer).filter(Customer.email == user.email).first()
-        if cust and cust.primary_gym_location:
-            loc = cust.primary_gym_location.strip()
+        u_role = (user.role or "").strip().upper()
+        # Check Gym Owner mapping
+        if u_role in ["GYM_OWNER", "OWNER"]:
             branch = db.query(GymBranch).filter(
                 or_(
-                    GymBranch.id == loc,
-                    GymBranch.branch_name.ilike(f"%{loc}%")
+                    GymBranch.owner_id == user.id,
+                    GymBranch.id == user.branch_id
                 )
             ).first()
+
+        # Check Customer primary gym location mapping
+        if not branch:
+            cust = db.query(Customer).filter(Customer.user_id == user.id).first()
+            if not cust:
+                cust = db.query(Customer).filter(Customer.email == user.email).first()
+            if cust and cust.primary_gym_location:
+                loc = cust.primary_gym_location.strip()
+                branch = db.query(GymBranch).filter(
+                    or_(
+                        GymBranch.id == loc,
+                        GymBranch.branch_name.ilike(f"%{loc}%")
+                    )
+                ).first()
 
         # Check Trainer primary gym location mapping
         if not branch:
@@ -49,8 +60,8 @@ def _fetch_gym_context(db: Session, user: User = None) -> dict:
         branch = db.query(GymBranch).first()
 
     gym_name = (
-        (setting.gym_name if setting and setting.gym_name else None)
-        or (branch.gym_name if branch and branch.gym_name else None)
+        (branch.gym_name if branch and branch.gym_name else None)
+        or (setting.gym_name if setting and setting.gym_name else None)
         or ""
     )
     branch_name = branch.branch_name if branch and branch.branch_name else ""
@@ -193,8 +204,8 @@ class AuthService:
         clean_email = email.strip().lower()
         existing = db.query(User).filter(User.email == clean_email).first()
 
-        gym_ctx = _fetch_gym_context(db)
         if existing:
+            gym_ctx = _fetch_gym_context(db, user=existing)
             token = create_access_token({"sub": existing.id, "email": existing.email, "role": existing.role, "branch_id": gym_ctx.get("gym_id")})
             return {
                 "access_token": token,
@@ -209,6 +220,9 @@ class AuthService:
 
         hashed_pwd = hash_password(password)
         user_id = f"owner_{uuid.uuid4().hex[:8]}"
+        branch_id = f"branch_{uuid.uuid4().hex[:8]}"
+        resolved_gym_name = gym_name or f"{full_name}'s Gym"
+
         new_user = User(
             id=user_id,
             email=clean_email,
@@ -216,12 +230,27 @@ class AuthService:
             role="GYM_OWNER",
             full_name=full_name,
             phone=phone,
+            branch_id=branch_id,
             is_active=True,
             is_tenant_owner=True
         )
         db.add(new_user)
+        db.flush()
+
+        new_branch = GymBranch(
+            id=branch_id,
+            branch_name=resolved_gym_name,
+            gym_name=resolved_gym_name,
+            city="",
+            owner_id=user_id,
+            is_active=True,
+            created_at=now_ist_naive()
+        )
+        db.add(new_branch)
         db.commit()
         db.refresh(new_user)
+
+        gym_ctx = _fetch_gym_context(db, user=new_user)
 
         token = create_access_token({"sub": new_user.id, "email": new_user.email, "role": new_user.role, "branch_id": gym_ctx.get("gym_id")})
         return {

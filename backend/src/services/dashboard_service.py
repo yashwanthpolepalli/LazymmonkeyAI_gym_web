@@ -292,7 +292,7 @@ class DashboardService:
         }
 
     @staticmethod
-    def get_owner_dashboard(db: Session, branch_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_owner_dashboard(db: Session, branch_id: Optional[str] = None, current_user: Any = None) -> Dict[str, Any]:
         """
         Aggregates Owner Command Center KPIs with SQL Bulk Grouping (Eliminating N+1 queries)
         and strict Check-In / Check-Out occupancy state tracking.
@@ -306,8 +306,28 @@ class DashboardService:
         log_query = db.query(BiometricLog)
         mem_query = db.query(Membership)
 
+        if current_user:
+            role = (current_user.role or "").strip().upper()
+            if role in ["GYM_OWNER", "OWNER"]:
+                from sqlalchemy import or_
+                cust_query = cust_query.filter(
+                    or_(
+                        Customer.owner_id == current_user.id,
+                        Customer.branch_id == current_user.branch_id
+                    )
+                )
+            elif role in ["TRAINER", "STAFF"]:
+                if current_user.branch_id:
+                    cust_query = cust_query.filter(Customer.branch_id == current_user.branch_id)
+
         if branch_id:
-            cust_query = cust_query.filter(Customer.primary_gym_location.ilike(f"%{branch_id}%"))
+            from sqlalchemy import or_
+            cust_query = cust_query.filter(
+                or_(
+                    Customer.branch_id == branch_id,
+                    Customer.primary_gym_location.ilike(f"%{branch_id}%")
+                )
+            )
             log_query = log_query.filter(BiometricLog.location.ilike(f"%{branch_id}%"))
 
         # Real Occupancy Calculation: Active customers whose LATEST log today is CHECK_IN without EXIT

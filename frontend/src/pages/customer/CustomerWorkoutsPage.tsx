@@ -71,6 +71,7 @@ export function CustomerWorkoutsPage() {
   const [selectedGenderMedia, setSelectedGenderMedia] = useState<'female' | 'male'>('male');
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [videoTab, setVideoTab] = useState<'video' | 'phase1' | 'phase2'>('video');
+  const [hasVideoAccess, setHasVideoAccess] = useState<boolean>(true);
 
   // Active Workout Execution Modal State
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -104,8 +105,19 @@ export function CustomerWorkoutsPage() {
 
   // 2. Fetch User Profile, Muscles, Dashboard & Today's Workout on Mount
   useEffect(() => {
-    // Fetch Current User via JWT
-    api.auth.me().then((u) => setCurrentUser(u)).catch(() => { });
+    // Fetch Current User via JWT & Profile Video Access Setting
+    api.auth.me().then((u) => {
+      setCurrentUser(u);
+      if (u && (u as any).enable_workout_videos !== undefined) {
+        setHasVideoAccess((u as any).enable_workout_videos !== false);
+      }
+    }).catch(() => { });
+
+    customerApi.getProfile().then((p) => {
+      if (p && p.enable_workout_videos !== undefined) {
+        setHasVideoAccess(p.enable_workout_videos !== false);
+      }
+    }).catch(() => { });
 
     // Fetch Dynamic Muscle List from Backend API
     customerApi.getMuscles()
@@ -130,6 +142,9 @@ export function CustomerWorkoutsPage() {
     ]).then(([dashRes, todayRes]) => {
       setDashboardData(dashRes);
       setTodaysWorkout(todayRes);
+      if (todayRes && (todayRes as any).has_video_access !== undefined) {
+        setHasVideoAccess((todayRes as any).has_video_access !== false);
+      }
       setLoadingSummary(false);
     });
   }, []);
@@ -145,6 +160,9 @@ export function CustomerWorkoutsPage() {
 
     apiCall
       .then((res: any) => {
+        if (res && res.has_video_access !== undefined) {
+          setHasVideoAccess(res.has_video_access !== false);
+        }
         const rawList = res.exercises || res.results || (Array.isArray(res) ? res : []);
 
         const formatted: ExerciseItem[] = rawList.map((item: any, idx: number) => ({
@@ -527,10 +545,19 @@ export function CustomerWorkoutsPage() {
                       {ex.duration || '00:45'}
                     </div>
 
-                    {/* Play Button Overlay */}
+                    {/* Play Button Overlay / Form Guide */}
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-13 h-13 rounded-full bg-white/90 hover:bg-brand-600 text-slate-900 hover:text-white flex items-center justify-center shadow-xl transition-all group-hover:scale-110">
-                        <Icon name="play" size={20} className="ml-0.5" />
+                      <div className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center shadow-xl transition-all group-hover:scale-110",
+                        hasVideoAccess && ex.video_url
+                          ? "bg-white/90 hover:bg-brand-600 text-slate-900 hover:text-white"
+                          : "bg-slate-900/80 backdrop-blur text-amber-300 border border-amber-500/30"
+                      )}>
+                        {hasVideoAccess && ex.video_url ? (
+                          <Icon name="play" size={18} className="ml-0.5" />
+                        ) : (
+                          <Icon name="lock" size={16} />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -617,13 +644,13 @@ export function CustomerWorkoutsPage() {
                 <div className="flex items-center gap-1 px-4 pt-4 pb-2 z-10">
                   <button
                     onClick={() => setVideoTab('video')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                       videoTab === 'video'
                         ? 'bg-brand-600 text-white shadow'
                         : 'bg-white/10 text-slate-400 hover:bg-white/20'
                     }`}
                   >
-                    ▶ Form Video
+                    {hasVideoAccess ? <span>▶ Form Video</span> : <span className="flex items-center gap-1 text-amber-300"><Icon name="lock" size={11} /> Video (Locked)</span>}
                   </button>
                   {selectedExercise.thumbnail_url && (
                     <button
@@ -655,7 +682,23 @@ export function CustomerWorkoutsPage() {
                 <div className="flex-1 relative">
                   {videoTab === 'video' && (
                     <>
-                      {selectedExercise.video_url && selectedExercise.video_type === 'youtube' ? (
+                      {!hasVideoAccess ? (
+                        <div className="w-full min-h-[340px] flex flex-col items-center justify-center p-8 text-center space-y-4 bg-slate-900/95">
+                          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg animate-pulse">
+                            <Icon name="lock" size={30} />
+                          </div>
+                          <div className="space-y-1.5 max-w-sm">
+                            <div className="text-base font-extrabold text-white">Workout Video Access Locked</div>
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                              Your Gym Owner has disabled video demonstration playback for this account. Form cues, starting setup, and instructions are accessible below.
+                            </p>
+                          </div>
+                          <div className="px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-amber-300 text-xs font-bold flex items-center gap-1.5">
+                            <Icon name="info" size={13} />
+                            Contact your gym to unlock video tutorials
+                          </div>
+                        </div>
+                      ) : selectedExercise.video_url && selectedExercise.video_type === 'youtube' ? (
                         <iframe
                           key={selectedExercise.id + selectedExercise.video_url}
                           src={selectedExercise.video_url}

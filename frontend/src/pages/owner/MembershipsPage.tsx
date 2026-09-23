@@ -11,6 +11,8 @@ import { cn } from '@/utils/cn';
 
 export interface MembershipPlanItem {
   id?: string;
+  owner_id?: string;
+  branch_id?: string;
   name: string;
   category?: string;
   price: number;

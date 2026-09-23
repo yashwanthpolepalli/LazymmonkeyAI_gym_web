@@ -61,10 +61,14 @@ app.add_middleware(
 import os
 from fastapi.staticfiles import StaticFiles
 
-# Mount static uploads directory for brochures & media assets
+# Mount static uploads and images directories for brochures, posters & media assets
 uploads_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "uploads"))
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
+images_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "images"))
+os.makedirs(images_dir, exist_ok=True)
+app.mount("/images", StaticFiles(directory=images_dir), name="images")
 
 # Register v1 api_router under /api/v1 and /api for compatibility
 app.include_router(api_router, prefix="/api/v1")

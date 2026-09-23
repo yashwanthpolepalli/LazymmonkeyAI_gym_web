@@ -86,10 +86,20 @@ export function FeatureControlsPage() {
                     return (
                       <td key={p} className="px-3 py-3 text-center">
                         <button
+                          type="button"
                           onClick={() => toggle(f, p)}
-                          className={cn('relative w-12 h-6 rounded-full transition-colors cursor-pointer', isEnabled ? 'bg-brand-600' : 'bg-navy-200')}
+                          aria-label={`Toggle ${f} for ${p}`}
+                          className={cn(
+                            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                            isEnabled ? 'bg-brand-600' : 'bg-slate-200'
+                          )}
                         >
-                          <span className={cn('absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform', isEnabled ? 'translate-x-6' : 'translate-x-0.5')} />
+                          <span
+                            className={cn(
+                              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out',
+                              isEnabled ? 'translate-x-5' : 'translate-x-0'
+                            )}
+                          />
                         </button>
                       </td>
                     );

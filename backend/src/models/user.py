@@ -14,6 +14,8 @@ class User(Base):
     full_name = Column(String, nullable=False)
     phone = Column(String)
     avatar_url = Column(String)
+    owner_id = Column(String, nullable=True, index=True)
+    branch_id = Column(String, nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     is_platform_admin = Column(Boolean, default=False)
     is_tenant_owner = Column(Boolean, default=False)

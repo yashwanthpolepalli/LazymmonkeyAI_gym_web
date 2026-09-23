@@ -12,6 +12,7 @@ class TrainerProfile(Base):
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     phone = Column(String, nullable=True)
+    gender = Column(String, nullable=True)  # Male, Female, Other
     role = Column(String, nullable=False)  # GYM_OWNER, MANAGER, TRAINER, STAFF
     specialization = Column(String, nullable=True)
     primary_gym_location = Column(String, nullable=True)

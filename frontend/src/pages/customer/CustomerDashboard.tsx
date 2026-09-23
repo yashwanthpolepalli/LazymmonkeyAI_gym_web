@@ -15,7 +15,9 @@ import type {
   CustomerNutritionData,
   AICoachRecommendation,
 } from '@/types/customer';
+import { CustomerGoogleReviewCard } from '@/components/customer/CustomerGoogleReviewCard';
 import { cn } from '@/utils/cn';
+
 
 export function CustomerDashboard() {
   const navigate = useNavigate();
@@ -231,7 +233,11 @@ export function CustomerDashboard() {
           <button onClick={() => navigate('/app/ai-coach')} className="btn-secondary mt-4 text-xs flex items-center justify-center gap-2"><Icon name="message-square" size={14} /> Chat with AI Coach</button>
         </div>
       </div>
+
+      {/* Official Google Business Reviews & AI Suggestion Hub */}
+      <CustomerGoogleReviewCard />
     </div>
   );
 }
+
 

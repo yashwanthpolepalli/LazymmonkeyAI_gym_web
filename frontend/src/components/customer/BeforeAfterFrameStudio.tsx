@@ -1065,9 +1065,9 @@ export function BeforeAfterFrameStudio({
                   <button
                     key={ar.id}
                     onClick={() => setAspectRatio(ar.id as any)}
-                    className={`py-1.5 rounded-xl text-xs font-bold transition ${
+                    className={`py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                       aspectRatio === ar.id
-                        ? 'bg-navy-900 text-white shadow-sm'
+                        ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/20'
                         : 'bg-navy-50 text-navy-600 hover:bg-navy-100'
                     }`}
                   >

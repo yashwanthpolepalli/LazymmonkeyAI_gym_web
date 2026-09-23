@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { notifyModuleVisibilityChanged } from '@/config/navigation';
 import { MembershipsPage } from '@/pages/owner/MembershipsPage';
 import { ReportsPage } from '@/pages/owner/ReportsPage';
+import { BillingSettingsTab } from '@/components/settings/BillingSettingsTab';
 import { cn } from '@/utils/cn';
 
 interface NotificationSetting {
@@ -156,13 +157,19 @@ export function SettingsPage() {
     { id: 'google_fit', name: 'Google Health Connect', icon: 'smartphone', category: 'Health & Wearables', desc: 'Android wearable activity & sleep data synchronization', connected: false, statusText: 'Disconnected', badgeColor: 'bg-navy-50 text-navy-600 border-navy-200' },
   ]);
 
+  const [billingInfo, setBillingInfo] = useState<any>(null);
+
   // Load existing settings, owner profile, and BMI config from backend DB on mount
   useEffect(() => {
     Promise.all([
       apiClient.get<any>('/gym/settings').catch(() => null),
       api.auth.me().catch(() => null),
       apiClient.get<any>('/bmi-config').catch(() => null),
-    ]).then(([gymRes, userRes, bmiRes]) => {
+      apiClient.get<any>('/gym/billing').catch(() => null),
+    ]).then(([gymRes, userRes, bmiRes, billingRes]) => {
+      if (billingRes) {
+        setBillingInfo(billingRes.billing || billingRes);
+      }
       if (gymRes) {
         if (gymRes.gym_name) setGymName(gymRes.gym_name);
         if (gymRes.phone) setGymPhone(gymRes.phone);
@@ -735,7 +742,12 @@ export function SettingsPage() {
                 Gym name, phone number, and address are automatically printed on official GST Tax Invoices and member body composition result sheets.
               </p>
               <div className="p-3 rounded-xl bg-white border border-brand-200 text-xs font-semibold text-brand-900">
-                Current Active Tax Rate: <span className="font-bold">18% GST (9% CGST + 9% SGST)</span>
+                Current Active Tax Rate:{' '}
+                <span className="font-bold">
+                  {billingInfo?.enable_gst_engine && Number(billingInfo?.total_gst_rate) > 0
+                    ? `${billingInfo.total_gst_rate}% GST (${billingInfo.cgst_rate || (Number(billingInfo.total_gst_rate)/2)}% CGST + ${billingInfo.sgst_rate || (Number(billingInfo.total_gst_rate)/2)}% SGST)`
+                    : 'GST Engine Disabled (0% Nil Rated)'}
+                </span>
               </div>
             </div>
           </div>
@@ -1044,16 +1056,17 @@ export function SettingsPage() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => handleToggleNotification(n.id)}
                     className={cn(
-                      'relative w-12 h-6 rounded-full transition-colors focus:outline-none ring-2 ring-transparent focus:ring-brand-400',
-                      n.enabled ? 'bg-brand-600' : 'bg-navy-200'
+                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                      n.enabled ? 'bg-brand-600' : 'bg-slate-200'
                     )}
                   >
                     <span
                       className={cn(
-                        'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform',
-                        n.enabled ? 'translate-x-6' : 'translate-x-0.5'
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out',
+                        n.enabled ? 'translate-x-5' : 'translate-x-0'
                       )}
                     />
                   </button>
@@ -1153,23 +1166,8 @@ export function SettingsPage() {
 
       {/* TAB 6: BILLING */}
       {activeTab === 'Billing' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-          <div className="lg:col-span-8 space-y-5">
-            <div className="card p-6 bg-gradient-to-br from-navy-900 to-brand-950 text-white border-navy-800 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold tracking-wider uppercase text-brand-300">Subscription Plan</span>
-                <Badge variant="brand">Enterprise Unlimited</Badge>
-              </div>
-              <div>
-                <div className="text-3xl font-black">₹24,000 <span className="text-xs font-normal text-navy-300">/ month</span></div>
-                <p className="text-xs text-navy-300 mt-1">Multi-branch access, Unlimited members, InBody hardware sync & AI features.</p>
-              </div>
-              <div className="border-t border-navy-800 pt-3 text-xs text-navy-300 flex items-center justify-between">
-                <span>Next Billing Date: September 26, 2026</span>
-                <span className="text-emerald-400 font-bold">Auto-renewal On</span>
-              </div>
-            </div>
-          </div>
+        <div className="space-y-6 animate-fade-in">
+          <BillingSettingsTab />
         </div>
       )}
 

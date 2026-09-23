@@ -33,7 +33,7 @@ export function MemberCard({ profile }: { profile: CustomerProfile }) {
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">{profile.full_name}</h2>
             <div className="text-xs text-navy-200 font-mono font-semibold mt-0.5">ID: {memberId}</div>
-            <div className="text-xs text-brand-200 mt-1 font-medium capitalize">{profile.membership?.plan_name || 'Standard Plan'}</div>
+            <div className="text-xs text-brand-200 mt-1 font-medium capitalize">{profile.membership?.plan_name || 'No Active Plan'}</div>
           </div>
         </div>
       </div>

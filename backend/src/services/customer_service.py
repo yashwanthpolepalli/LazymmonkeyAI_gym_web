@@ -1,8 +1,9 @@
-from src.utils.timezone import now_ist_naive, today_ist_start, to_ist_str
 import datetime
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
+from src.utils.timezone import now_ist_naive, today_ist_start, to_ist_str
 from src.models.user import User
 from src.models.customer import Customer
 from src.models.membership import Membership
@@ -11,6 +12,7 @@ from src.models.biometric import BiometricLog
 from src.models.inbody import InBodyReport
 from src.utils.email import generate_enrollment_password, send_enrollment_email
 from src.utils.security import hash_password
+from src.models.gym_setting import GymBranch
 
 from src.models.biometric_device import BiometricDevice
 
@@ -133,19 +135,101 @@ class CustomerService:
             "expiry": expiry_str or "No active plan",
             "revenue": revenue_str,
             "branch": c.primary_gym_location or "",
+            "branch_id": c.branch_id or "",
+            "owner_id": c.owner_id or "",
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "joinDate": c.created_at.isoformat() if c.created_at else None,
             "membership": mem.plan_name if mem else "No Active Plan",
             "membership_plan": mem_dict,
             "biometric_synced": is_completed,
             "biometric_status": biometric_status,
+            "enable_workout_videos": bool(c.enable_workout_videos if c.enable_workout_videos is not None else True),
             "kyc_status": kyc_status,
             "kyc_percent": kyc_percent,
         }
 
     @staticmethod
-    def get_all_customers(db: Session) -> List[dict]:
-        customers = db.query(Customer).order_by(Customer.created_at.desc()).all()
+    def get_all_customers(
+        db: Session,
+        current_user: Optional[User] = None,
+        branch: Optional[str] = None,
+        branch_id: Optional[str] = None,
+        owner_id: Optional[str] = None
+    ) -> List[dict]:
+        from sqlalchemy import or_, func
+        from src.models.gym_setting import GymBranch
+
+        query = db.query(Customer)
+
+        # Multi-tenant gym owner & branch isolation
+        if current_user:
+            user_role = (current_user.role or "").strip().upper()
+            if user_role in ["SUPER_ADMIN", "ADMIN"] or current_user.is_platform_admin:
+                # Super Admin can view all or filter by query parameters
+                if owner_id:
+                    query = query.filter(Customer.owner_id == owner_id)
+                if branch_id:
+                    query = query.filter(Customer.branch_id == branch_id)
+                if branch:
+                    query = query.filter(Customer.primary_gym_location.ilike(f"%{branch}%"))
+            elif user_role in ["GYM_OWNER", "OWNER"]:
+                # Gym Owner can ONLY view customers belonging to their gym / branches
+                owner_branches = db.query(GymBranch).filter(
+                    or_(
+                        GymBranch.owner_id == current_user.id,
+                        GymBranch.id == current_user.branch_id
+                    )
+                ).all()
+                owner_branch_ids = [b.id for b in owner_branches if b.id]
+
+                # Customer MUST belong to this gym owner
+                conditions = [Customer.owner_id == current_user.id]
+                if owner_branch_ids:
+                    conditions.append(
+                        and_(
+                            Customer.branch_id.in_(owner_branch_ids),
+                            or_(Customer.owner_id == current_user.id, Customer.owner_id.is_(None))
+                        )
+                    )
+
+                query = query.filter(or_(*conditions))
+
+                # Branch specific sub-filter if selected by owner
+                if branch_id or branch:
+                    target_b = branch_id or branch
+                    query = query.filter(
+                        or_(
+                            Customer.branch_id == target_b,
+                            Customer.primary_gym_location.ilike(f"%{target_b}%")
+                        )
+                    )
+            elif user_role in ["TRAINER", "COACH", "STAFF", "MANAGER"]:
+                # Staff/Trainer scoped to their assigned customers or branch
+                conditions = [Customer.trainer_id == current_user.id]
+                if current_user.branch_id:
+                    conditions.append(Customer.branch_id == current_user.branch_id)
+                    conditions.append(Customer.primary_gym_location.ilike(f"%{current_user.branch_id}%"))
+                if current_user.owner_id:
+                    conditions.append(Customer.owner_id == current_user.owner_id)
+                query = query.filter(or_(*conditions))
+            elif user_role in ["CUSTOMER", "MEMBER"]:
+                # Customer can only view their own record
+                query = query.filter(
+                    or_(
+                        Customer.user_id == current_user.id,
+                        func.lower(Customer.email) == current_user.email.strip().lower()
+                    )
+                )
+        else:
+            # Unauthenticated or direct filtering via query params
+            if owner_id:
+                query = query.filter(Customer.owner_id == owner_id)
+            if branch_id:
+                query = query.filter(Customer.branch_id == branch_id)
+            if branch:
+                query = query.filter(Customer.primary_gym_location.ilike(f"%{branch}%"))
+
+        customers = query.order_by(Customer.created_at.desc()).all()
         return [CustomerService._format_customer(c, db) for c in customers]
 
     @staticmethod
@@ -292,6 +376,32 @@ class CustomerService:
 
         from sqlalchemy import func
         user = db.query(User).filter(func.lower(User.email) == clean_email).first()
+        # Resolve Branch & Gym Owner
+        from src.models.gym_setting import GymBranch
+        owner_hint = data.get("owner_id")
+        branch_ref = (data.get("branch_id") or data.get("branch") or data.get("primary_gym_location") or data.get("branch_name") or data.get("location") or "").strip()
+        matched_branch = None
+        if branch_ref:
+            if owner_hint:
+                matched_branch = db.query(GymBranch).filter(
+                    GymBranch.owner_id == owner_hint,
+                    or_(
+                        GymBranch.id == branch_ref,
+                        GymBranch.branch_name.ilike(f"%{branch_ref}%")
+                    )
+                ).first()
+            if not matched_branch:
+                matched_branch = db.query(GymBranch).filter(
+                    or_(
+                        GymBranch.id == branch_ref,
+                        GymBranch.branch_name.ilike(f"%{branch_ref}%")
+                    )
+                ).first()
+
+        resolved_branch_id = data.get("branch_id") or (matched_branch.id if matched_branch else None)
+        resolved_branch_name = (matched_branch.branch_name if matched_branch else branch_ref) or None
+        resolved_owner_id = data.get("owner_id") or (matched_branch.owner_id if matched_branch else None)
+
         if not user:
             user = User(
                 id=f"usr_{uuid.uuid4().hex[:8]}",
@@ -299,7 +409,9 @@ class CustomerService:
                 password_hash=hash_password(generated_password),
                 full_name=full_name,
                 role=role,
-                phone=phone
+                phone=phone,
+                owner_id=resolved_owner_id,
+                branch_id=resolved_branch_id
             )
             db.add(user)
             db.flush()
@@ -309,6 +421,10 @@ class CustomerService:
             user.full_name = full_name
             user.phone = phone
             user.role = role
+            if resolved_owner_id:
+                user.owner_id = resolved_owner_id
+            if resolved_branch_id:
+                user.branch_id = resolved_branch_id
 
         existing_cust = db.query(Customer).filter(func.lower(Customer.email) == clean_email).first()
         if existing_cust:
@@ -324,8 +440,12 @@ class CustomerService:
                 cust.status = data.get("status")
             if profile_image:
                 cust.profile_image = profile_image
-            if data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location"):
-                cust.primary_gym_location = (data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location")).strip()
+            if resolved_branch_name:
+                cust.primary_gym_location = resolved_branch_name
+            if resolved_branch_id:
+                cust.branch_id = resolved_branch_id
+            if resolved_owner_id:
+                cust.owner_id = resolved_owner_id
         else:
             cust = Customer(
                 id=f"cust_{uuid.uuid4().hex[:8]}",
@@ -339,7 +459,9 @@ class CustomerService:
                 fitness_score=fitness_score,
                 goal=goal,
                 profile_image=profile_image,
-                primary_gym_location=(data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location") or "").strip() or None,
+                owner_id=resolved_owner_id,
+                branch_id=resolved_branch_id,
+                primary_gym_location=resolved_branch_name,
                 status=data.get("status", "ACTIVE")
             )
             db.add(cust)
@@ -362,6 +484,8 @@ class CustomerService:
                 duration_days = int(data.get("duration_days") or 30)
                 plan_price = float(data["plan_price"]) if data.get("plan_price") is not None else 0.0
 
+            plan_type = data.get("plan_type") or (db_plan.category if db_plan and db_plan.category else ("ANNUAL" if duration_days >= 365 else ("QUARTERLY" if duration_days >= 90 else "MONTHLY")))
+
             start_date = now_ist_naive()
             if data.get("start_date"):
                 try:
@@ -377,10 +501,15 @@ class CustomerService:
                 except Exception:
                     pass
 
-            plan_type = "ANNUAL" if duration_days >= 365 else ("QUARTERLY" if duration_days >= 90 else "MONTHLY")
+            paid_amount = float(data.get("paid_amount")) if data.get("paid_amount") is not None else plan_price
+            due_amount = float(data.get("due_amount")) if data.get("due_amount") is not None else max(0.0, plan_price - paid_amount)
+            payment_method = data.get("payment_method") or "Cash"
+            mem_id = f"mem_{uuid.uuid4().hex[:8]}"
+            invoice_number = data.get("invoice_number") or f"INV-MEM-{mem_id[-6:].upper()}"
+            transaction_id = data.get("transaction_id")
 
             mem = Membership(
-                id=f"mem_{uuid.uuid4().hex[:8]}",
+                id=mem_id,
                 customer_id=cust.id,
                 plan_name=membership_plan,
                 plan_type=plan_type,
@@ -388,8 +517,11 @@ class CustomerService:
                 start_date=start_date,
                 expiry_date=expiry_date,
                 price=plan_price,
-                paid_amount=plan_price,
-                due_amount=0.0
+                paid_amount=paid_amount,
+                due_amount=due_amount,
+                payment_method=payment_method,
+                invoice_number=invoice_number,
+                transaction_id=transaction_id
             )
             db.add(mem)
 
@@ -475,6 +607,20 @@ class CustomerService:
             cust.status = data.get("status")
         if "trainer_id" in data:
             cust.trainer_id = data.get("trainer_id")
+        if "enable_workout_videos" in data or "enableWorkoutVideos" in data:
+            val = data.get("enable_workout_videos") if "enable_workout_videos" in data else data.get("enableWorkoutVideos")
+            if val is not None:
+                cust.enable_workout_videos = bool(val)
+        db.commit()
+        db.refresh(cust)
+        return CustomerService._format_customer(cust, db)
+
+    @staticmethod
+    def toggle_workout_video_access(db: Session, customer_id: str, enable: bool) -> dict:
+        cust = db.query(Customer).filter(Customer.id == customer_id).first()
+        if not cust:
+            raise ValueError("Customer not found")
+        cust.enable_workout_videos = bool(enable)
         db.commit()
         db.refresh(cust)
         return CustomerService._format_customer(cust, db)
@@ -497,132 +643,4 @@ class CustomerService:
 
     @staticmethod
     def onboard_customer(db: Session, data: dict) -> dict:
-        full_name = data.get("full_name") or data.get("name") or data.get("fullName")
-        email = data.get("email")
-        phone = data.get("phone")
-        gender = data.get("gender")
-        weight = float(data["weight"]) if data.get("weight") is not None else None
-        bmi = float(data["bmi"]) if data.get("bmi") is not None else None
-        fitness_score = int(data["fitness_score"]) if data.get("fitness_score") is not None else None
-        goal = data.get("goal")
-        profile_image = data.get("profile_image")
-        membership_plan = data.get("membership_plan") or data.get("membership")
-        role = data.get("role", "CUSTOMER").upper()
-
-        generated_password = generate_enrollment_password(full_name, phone)
-
-        existing_user = db.query(User).filter(User.email == email).first()
-        if existing_user:
-            user = existing_user
-            user.password_hash = hash_password(generated_password)
-            user.full_name = full_name
-            user.phone = phone
-            user.role = role
-            if profile_image:
-                user.avatar_url = profile_image
-        else:
-            user = User(
-                id=f"usr_{uuid.uuid4().hex[:8]}",
-                email=email,
-                password_hash=hash_password(generated_password),
-                role=role,
-                full_name=full_name,
-                phone=phone,
-                avatar_url=profile_image
-            )
-            db.add(user)
-            db.flush()
-
-        existing_cust = db.query(Customer).filter(Customer.email == email).first()
-        if existing_cust:
-            cust = existing_cust
-            cust.full_name = full_name
-            cust.phone = phone
-            cust.gender = gender
-            if data.get("status"):
-                cust.status = data.get("status")
-            if profile_image:
-                cust.profile_image = profile_image
-            if data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location"):
-                cust.primary_gym_location = (data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location")).strip()
-        else:
-            cust = Customer(
-                id=f"cust_{uuid.uuid4().hex[:8]}",
-                user_id=user.id,
-                full_name=full_name,
-                email=email,
-                phone=phone,
-                gender=gender,
-                weight=weight,
-                bmi=bmi,
-                fitness_score=fitness_score,
-                goal=goal,
-                profile_image=profile_image,
-                primary_gym_location=(data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location") or "").strip() or None,
-                status=data.get("status", "ACTIVE")
-            )
-            db.add(cust)
-            db.flush()
-
-        if membership_plan:
-            from src.models.plan import MembershipPlan
-
-            # Look up plan from DB by name (owner-created plans are the source of truth)
-            db_plan = db.query(MembershipPlan).filter(
-                MembershipPlan.name == membership_plan,
-                MembershipPlan.is_active == True
-            ).first()
-
-            if db_plan:
-                duration_days = db_plan.duration_days
-                plan_price = db_plan.price
-            else:
-                duration_days = int(data.get("duration_days") or 30)
-                plan_price = float(data["plan_price"]) if data.get("plan_price") is not None else 0.0
-
-            start_date = now_ist_naive()
-            if data.get("start_date"):
-                try:
-                    start_date = datetime.datetime.fromisoformat(data["start_date"].replace('Z', ''))
-                except Exception:
-                    pass
-
-            expiry_date = start_date + datetime.timedelta(days=duration_days)
-            if data.get("expiry_date") or data.get("end_date"):
-                raw_exp = data.get("expiry_date") or data.get("end_date")
-                try:
-                    expiry_date = datetime.datetime.fromisoformat(str(raw_exp).replace('Z', ''))
-                except Exception:
-                    pass
-
-            plan_type = "ANNUAL" if duration_days >= 365 else ("QUARTERLY" if duration_days >= 90 else "MONTHLY")
-
-            mem = Membership(
-                id=f"mem_{uuid.uuid4().hex[:8]}",
-                customer_id=cust.id,
-                plan_name=membership_plan,
-                plan_type=plan_type,
-                status="ACTIVE",
-                start_date=start_date,
-                expiry_date=expiry_date,
-                price=plan_price,
-                paid_amount=plan_price,
-                due_amount=0.0
-            )
-            db.add(mem)
-
-        db.commit()
-        db.refresh(cust)
-
-        try:
-            send_enrollment_email(
-                to_email=email,
-                full_name=full_name,
-                password=generated_password,
-                role=role,
-                plan_name=membership_plan
-            )
-        except Exception:
-            pass
-
-        return CustomerService._format_customer(cust, db)
+        return CustomerService.create_customer(db, data)

@@ -82,6 +82,22 @@ export function GymBrandLogo({
       );
     }
 
+    // Preset 0: LazyMonkey FIT CLUB AI Official Mascot Logo
+    if (logoPreset === 'lazymonkey' || logoPreset === 'fitclub-ai') {
+      return (
+        <div
+          className={`relative flex items-center justify-center p-1 ${shapeClass} ${bgClasses} ${currentSizeClass} ${className}`}
+          style={customInlineStyle}
+        >
+          <img
+            src="/icon.png"
+            alt="LazyMonkey FIT CLUB AI"
+            className="w-full h-full object-contain drop-shadow-md"
+          />
+        </div>
+      );
+    }
+
     // Vector Preset 1: Kettlebell with Lightning Bolt (Powerzone Style)
     if (logoPreset === 'kettlebell-bolt') {
       return (

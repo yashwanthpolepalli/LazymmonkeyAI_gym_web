@@ -5,6 +5,7 @@ export interface User {
   name: string;
   full_name?: string;
   email: string;
+  phone?: string;
   role: Role;
   avatar: string;
   gymId?: string;
@@ -82,6 +83,7 @@ export interface Member {
   bodyFat: number;
   goal: string;
   trainer: string;
+  enable_workout_videos?: boolean;
 }
 
 export interface Exercise {

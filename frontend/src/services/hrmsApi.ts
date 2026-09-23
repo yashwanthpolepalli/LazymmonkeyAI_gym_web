@@ -77,13 +77,121 @@ export interface AttendanceRecord {
   notes: string;
 }
 
+export interface LeaveTypeItem {
+  id: string;
+  name: string;
+  code: string;
+  category?: string;
+  description?: string;
+  paid_type: 'PAID' | 'UNPAID' | 'HALF_PAY';
+  is_paid: boolean;
+  gender_eligibility: string[];
+  employment_types?: string[];
+  applicable_departments?: string[];
+  applicable_designations?: string[];
+  min_service_days: number;
+  annual_quota: number;
+  max_consecutive_days?: number | null;
+  carry_forward_allowed: boolean;
+  max_carry_forward_days: number;
+  encashment_allowed?: boolean;
+  max_encashment_days?: number;
+  attachment_required: boolean;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EmployeeLeaveBalanceItem {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  employee_code: string;
+  gender: string;
+  department: string;
+  designation: string;
+  leave_type_id: string;
+  leave_type_name: string;
+  leave_type_code: string;
+  paid_type: string;
+  is_paid: boolean;
+  year: number;
+  allocated_days: number;
+  used_days: number;
+  pending_days: number;
+  buffer_days: number;
+  remaining_days: number;
+}
+
+export interface EligibleLeaveType extends LeaveTypeItem {
+  balance?: {
+    allocated_days: number;
+    used_days: number;
+    pending_days: number;
+    buffer_days: number;
+    remaining_days: number;
+  };
+}
+
+/**
+ * Formats a clean, professional employee-facing label for leave option dropdowns.
+ * Dynamically resolves: "{Leave Name} ({Code}) — {Paid/Unpaid} · {Balance} days remaining"
+ * Strips any redundant/duplicated code names from the raw name string.
+ */
+export function formatLeaveOptionLabel(leave: {
+  name: string;
+  code: string;
+  paid_type?: string;
+  is_paid?: boolean;
+  annual_quota?: number;
+  balance?: { remaining_days?: number };
+}): string {
+  let cleanName = (leave.name || '').trim();
+  const code = (leave.code || '').trim().toUpperCase();
+
+  // Strip duplicate code in parentheses if present in name (e.g. "Casual Leave (CL)" -> "Casual Leave")
+  if (code) {
+    cleanName = cleanName.replace(new RegExp(`\\s*\\(${code}\\)`, 'gi'), '').trim();
+  }
+  cleanName = cleanName.replace(/\s*\((Comp-Off|LWP|CL|SL|EL|ML|PL|CCL|AL|BL)\)/gi, '').trim();
+
+  // Paid / Unpaid / Half Pay classification
+  const paidType = (leave.paid_type || (leave.is_paid ? 'PAID' : 'UNPAID')).toUpperCase();
+  const payLabel =
+    paidType === 'PAID' || leave.is_paid
+      ? 'Paid'
+      : paidType === 'HALF_PAY'
+      ? 'Half Pay'
+      : 'Unpaid';
+
+  // Balance days formatting
+  const remaining = leave.balance?.remaining_days ?? leave.annual_quota ?? 0;
+  const isCompOff = code === 'COMP' || cleanName.toLowerCase().includes('comp');
+  const isUnpaid = paidType === 'UNPAID';
+
+  let balanceText = '';
+  if (isCompOff) {
+    balanceText = `${remaining} ${remaining === 1 ? 'day' : 'days'} available`;
+  } else if (remaining === 0 && (leave.annual_quota === 0 || !leave.annual_quota)) {
+    balanceText = isUnpaid ? '30 days remaining' : 'Unlimited';
+  } else {
+    balanceText = `${remaining} ${remaining === 1 ? 'day' : 'days'} remaining`;
+  }
+
+  return `${cleanName}${code ? ` (${code})` : ''} — ${payLabel} · ${balanceText}`;
+}
+
 export interface LeaveItem {
   id: string;
   employee_id: string;
   employee_name: string;
   employee_code: string;
+  gender?: string;
   department: string;
   leave_type: string;
+  leave_type_id?: string;
+  paid_type?: string;
+  is_paid?: boolean;
   start_date: string;
   end_date: string;
   days: number;
@@ -91,6 +199,8 @@ export interface LeaveItem {
   status: string;
   approved_by: string;
   applied_on: string;
+  attachment_url?: string;
+  rejection_reason?: string;
 }
 
 export interface PayrollItem {
@@ -269,12 +379,79 @@ export const hrmsApi = {
 
   // Leave
   getLeaves: () => apiClient.get<LeaveItem[]>('/hrms/leaves'),
-  applyLeave: (payload: { employee_id: string; leave_type: string; start_date: string; end_date: string; reason: string }) =>
-    apiClient.post<{ message: string; id: string }>('/hrms/leaves', payload),
-  updateLeaveStatus: (leaveId: string, payload: { status: string; reviewer?: string }) =>
+  applyLeave: (payload: {
+    employee_id: string;
+    leave_type?: string;
+    leave_type_id?: string;
+    start_date: string;
+    end_date: string;
+    reason: string;
+    attachment_url?: string;
+  }) =>
+    apiClient.post<{ message: string; id: string; days: number; leave_type: string }>('/hrms/leaves', payload),
+  updateLeaveStatus: (leaveId: string, payload: { status: string; reviewer?: string; rejection_reason?: string }) =>
     apiClient.put<{ message: string }>(`/hrms/leaves/${leaveId}/action`, payload),
 
-  // Payroll
+  // Leave Policies & Customization (Samarth LMS standard)
+  getLeaveTypes: (active_only?: boolean) =>
+    apiClient.get<LeaveTypeItem[]>('/hrms/leave-types', { params: { active_only } }),
+  createLeaveType: (payload: Partial<LeaveTypeItem>) =>
+    apiClient.post<{ message: string; id: string; leave_type: LeaveTypeItem }>('/hrms/leave-types', payload),
+  updateLeaveType: (leaveTypeId: string, payload: Partial<LeaveTypeItem>) =>
+    apiClient.put<{ message: string; leave_type: LeaveTypeItem }>(`/hrms/leave-types/${leaveTypeId}`, payload),
+  deleteLeaveType: (leaveTypeId: string) =>
+    apiClient.delete<{ message: string }>(`/hrms/leave-types/${leaveTypeId}`),
+  getEligibleLeaveTypes: (employeeId: string) =>
+    apiClient.get<{ employee: any; eligible_leave_types: EligibleLeaveType[]; count: number }>(
+      `/hrms/leave-types/eligible/${employeeId}`
+    ),
+  getLeaveBalances: (year?: number) =>
+    apiClient.get<EmployeeLeaveBalanceItem[]>('/hrms/leave-balances', { params: { year } }),
+  adjustLeaveBalance: (payload: {
+    employee_id: string;
+    leave_type_id: string;
+    year?: number;
+    allocated_days?: number;
+    used_days?: number;
+    buffer_days?: number;
+  }) => apiClient.post<{ message: string; balance: any }>('/hrms/leave-balances/adjust', payload),
+
+  // Enterprise Payroll Suite API Client (All 11 Sub-tabs)
+  getSalaryStructures: () => apiClient.get<any[]>('/hrms/payroll/structures'),
+  saveSalaryStructure: (payload: any) => apiClient.post<any>('/hrms/payroll/structures', payload),
+  deleteSalaryStructure: (id: string) => apiClient.delete<any>(`/hrms/payroll/structures/${id}`),
+
+  getPayrollProcessing: (month: number, year: number, department?: string, status_filter?: string) =>
+    apiClient.get<any>('/hrms/payroll/processing', { params: { month, year, department, status_filter } }),
+  disburseBatchPayroll: (payload: { month: number; year: number; employee_ids?: string[]; payment_method?: string }) =>
+    apiClient.post<any>('/hrms/payroll/disburse-batch', payload),
+  disburseSingleEmployee: (payload: { employee_id: string; month: number; year: number; payment_method?: string; transaction_ref?: string }) =>
+    apiClient.post<any>('/hrms/payroll/disburse-single', payload),
+
+  getStatutoryPfReport: (month: number, year: number) =>
+    apiClient.get<any>('/hrms/payroll/statutory/pf', { params: { month, year } }),
+  getStatutoryEsiReport: (month: number, year: number) =>
+    apiClient.get<any>('/hrms/payroll/statutory/esi', { params: { month, year } }),
+  getStatutoryTdsReport: (year: number) =>
+    apiClient.get<any>('/hrms/payroll/statutory/tds', { params: { year } }),
+
+  getPayslipsArchive: (month?: string, year?: number, search?: string) =>
+    apiClient.get<any>('/hrms/payroll/payslips', { params: { month, year, search } }),
+  getPayslipTemplates: () => apiClient.get<any[]>('/hrms/payroll/templates'),
+  savePayslipTemplate: (payload: any) => apiClient.post<any>('/hrms/payroll/templates', payload),
+  updatePayslipTemplate: (id: string, payload: any) => apiClient.put<any>(`/hrms/payroll/templates/${id}`, payload),
+  setDefaultPayslipTemplate: (id: string) => apiClient.post<any>(`/hrms/payroll/templates/${id}/set-default`),
+
+  getLoans: () => apiClient.get<any[]>('/hrms/payroll/loans'),
+  createLoan: (payload: any) => apiClient.post<any>('/hrms/payroll/loans', payload),
+  getAdvances: () => apiClient.get<any[]>('/hrms/payroll/advances'),
+  createAdvance: (payload: any) => apiClient.post<any>('/hrms/payroll/advances', payload),
+  getBonuses: () => apiClient.get<any[]>('/hrms/payroll/bonuses'),
+  createBonus: (payload: any) => apiClient.post<any>('/hrms/payroll/bonuses', payload),
+  getCommissions: () => apiClient.get<any[]>('/hrms/payroll/commissions'),
+  createCommission: (payload: any) => apiClient.post<any>('/hrms/payroll/commissions', payload),
+
+  // Legacy Payroll
   getPayroll: (month?: string, year?: number) =>
     apiClient.get<PayrollItem[]>('/hrms/payroll', { params: { month, year } }),
   generateBatchPayroll: (payload: { trainer_ids: string[]; month?: string; year?: number }) =>

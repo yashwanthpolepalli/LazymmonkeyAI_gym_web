@@ -48,7 +48,7 @@ export function BrochuresPage() {
   const [zoomScale, setZoomScale] = useState<number>(0.75);
   const [isExporting, setIsExporting] = useState(false);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
-  const [resolution, setResolution] = useState<'1080p' | '4k' | '8k'>('4k');
+  const [resolution, setResolution] = useState<'1080p' | '4k'>('4k');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAiUploadOpen, setIsAiUploadOpen] = useState(false);
   const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
@@ -201,7 +201,7 @@ export function BrochuresPage() {
     if (!node) return;
     setIsExporting(true);
 
-    const scaleMultiplier = resolution === '8k' ? 3.5 : resolution === '4k' ? 2.5 : 1.5;
+    const scaleMultiplier = resolution === '4k' ? 2.5 : 1.5;
     showToast(`⚡ High-DPI Rendering ${resolution.toUpperCase()} ${format.toUpperCase()} Master...`);
 
     try {
@@ -481,9 +481,11 @@ export function BrochuresPage() {
           {/* Brand & Title */}
           <div>
             <div className="flex items-center gap-3 mb-1.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-400 via-yellow-400 to-amber-500 text-slate-950 flex items-center justify-center font-black shadow-md shadow-amber-500/20">
-                <Icon name="sparkles" className="w-5 h-5" />
-              </div>
+              <img
+                src="/icon.png"
+                alt="LazyMonkey FIT CLUB AI"
+                className="w-10 h-10 rounded-2xl object-contain shadow-md shadow-amber-500/20 border border-amber-300/40 p-0.5 bg-white shrink-0"
+              />
               <h1 className="text-2xl font-black uppercase tracking-wider text-slate-950">
                 DYNAMIC <span className="text-amber-500">BROCHURE STUDIO</span>
               </h1>
@@ -495,6 +497,18 @@ export function BrochuresPage() {
 
           {/* Master Action Dock */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* LazyMonkey Brand Emblem */}
+            <div className="flex items-center gap-2 bg-slate-100/90 border border-slate-200 rounded-2xl px-3 py-1.5 shadow-xs">
+              <img
+                src="/icon.png"
+                alt="LazyMonkey AI"
+                className="w-6 h-6 rounded-lg object-contain"
+              />
+              <span className="text-[11px] font-black text-slate-900 tracking-tight">
+                FIT CLUB <span className="text-amber-500">AI</span>
+              </span>
+            </div>
+
             {/* Engine Mode Switcher */}
             <div className="flex items-center bg-slate-100 border border-slate-200 rounded-2xl p-1 shadow-inner">
               <button
@@ -517,23 +531,6 @@ export function BrochuresPage() {
               >
                 🎨 Classic Presets
               </button>
-            </div>
-
-            {/* Resolution Switcher Pill */}
-            <div className="flex items-center bg-slate-100 border border-slate-200 rounded-2xl p-1 shadow-inner">
-              {(['1080p', '4k', '8k'] as const).map((res) => (
-                <button
-                  key={res}
-                  onClick={() => setResolution(res)}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition ${
-                    resolution === res
-                      ? 'bg-white text-slate-950 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  {res}
-                </button>
-              ))}
             </div>
 
             {/* AI Scan Poster Button */}
@@ -585,7 +582,7 @@ export function BrochuresPage() {
                 name={isExporting ? 'refresh-cw' : 'download'}
                 className={`w-4 h-4 ${isExporting ? 'animate-spin' : ''}`}
               />
-              <span>{isExporting ? 'Rendering...' : `Export ${resolution.toUpperCase()} PNG`}</span>
+              <span>{isExporting ? 'Rendering...' : 'Export Master PNG'}</span>
             </button>
           </div>
         </div>

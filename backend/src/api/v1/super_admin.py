@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.services.super_admin_service import SuperAdminService
+from src.services.gym_setting_service import GymSettingService
 
 router = APIRouter(prefix="/superadmin", tags=["Super Admin"])
 
@@ -36,9 +37,27 @@ def get_organization_detail(org_id: str, db: Session = Depends(get_db)):
 
 @router.post("/gyms")
 @router.post("/organizations")
+@router.post("/owners/onboard")
 def onboard_organization(payload: dict = Body(...), db: Session = Depends(get_db)):
-    """Onboard a new Gym branch and owner dynamically into PostgreSQL DB."""
+    """Onboard a new Gym branch and owner with full credentials dynamically into PostgreSQL DB."""
     return SuperAdminService.onboard_gym(db, payload)
+
+
+@router.post("/owners/{user_id}/reset-credentials")
+def reset_owner_credentials(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Reset Gym Owner credentials dynamically with bcrypt hashing and audit logging."""
+    new_password = payload.get("new_password") or payload.get("password") or "FitClub@2026"
+    return SuperAdminService.reset_owner_credentials(db, user_id, new_password)
+
+
+@router.patch("/owners/{user_id}/status")
+def update_owner_status(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Activate or suspend Gym Owner account credentials with audit logging."""
+    is_active = payload.get("is_active")
+    if is_active is None:
+        status_str = payload.get("status", "active").lower()
+        is_active = (status_str == "active")
+    return SuperAdminService.update_owner_status(db, user_id, bool(is_active))
 
 
 @router.patch("/gyms/{gym_id}/status")
@@ -67,6 +86,19 @@ def create_plan(payload: dict = Body(...), db: Session = Depends(get_db)):
     return SuperAdminService.create_saas_plan(db, payload)
 
 
+@router.put("/plans/{plan_id}")
+def update_plan(plan_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Update an existing SaaS subscription tier dynamically in PostgreSQL."""
+    return SuperAdminService.update_saas_plan(db, plan_id, payload)
+
+
+@router.delete("/plans/{plan_id}")
+def delete_plan(plan_id: str, db: Session = Depends(get_db)):
+    """Delete or deactivate a SaaS subscription tier in PostgreSQL."""
+    return SuperAdminService.delete_saas_plan(db, plan_id)
+
+
+
 @router.get("/support-tickets")
 def list_support_tickets(status: str = None, db: Session = Depends(get_db)):
     """Fetch platform support tickets dynamically from DB."""
@@ -91,6 +123,24 @@ def update_support_ticket_status(ticket_id: str, payload: dict = Body(...), db: 
 def get_billing_overview(db: Session = Depends(get_db)):
     """Fetch revenue, MRR, and transaction history dynamically from DB."""
     return SuperAdminService.get_billing_overview(db)
+
+
+@router.get("/billing/settings")
+def get_superadmin_billing_settings(db: Session = Depends(get_db)):
+    """Fetch global GST & Discount Matrix settings dynamically from DB."""
+    setting = GymSettingService.get_settings(db)
+    return GymSettingService.get_billing_dict(setting)
+
+
+@router.post("/billing/settings")
+def update_superadmin_billing_settings(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Update global GST & Discount Matrix settings dynamically in DB."""
+    setting = GymSettingService.update_settings(db, payload)
+    return {
+        "message": "GST and discount billing settings saved successfully",
+        "billing": GymSettingService.get_billing_dict(setting)
+    }
+
 
 
 @router.get("/devices")

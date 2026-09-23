@@ -7,13 +7,15 @@ import { membersApi } from '@/services/membersApi';
 import { trainersApi } from '@/services/trainersApi';
 
 import { apiClient } from '@/services/apiClient';
-
 import { getTodayISO, addDaysISO, formatDateDDMMYY } from '@/utils/date';
+import { PaymentTerminalSelector, type PaymentDetailsPayload } from '@/components/payments/PaymentTerminalSelector';
 
 export type EnrollmentPersonType = 'member' | 'trainer';
 
 export interface PlanItem {
   id?: string;
+  owner_id?: string;
+  branch_id?: string;
   name: string;
   category?: string;
   price: number;
@@ -88,8 +90,10 @@ export function EnrollmentModal({
   const [startDate, setStartDate] = useState(() => getTodayISO());
   const [expiryDate, setExpiryDate] = useState(() => addDaysISO(getTodayISO(), 30));
   const [paymentMethodsList, setPaymentMethodsList] = useState<string[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [customPaymentMethod, setCustomPaymentMethod] = useState('');
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetailsPayload | null>(null);
+  const [billingSettings, setBillingSettings] = useState<any>(null);
   const activePaymentMethod = paymentMethod === 'Custom' ? (customPaymentMethod.trim() || 'Custom') : paymentMethod;
 
   const [biometricType, setBiometricType] = useState<BiometricType | null>(null);
@@ -103,9 +107,20 @@ export function EnrollmentModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
-  // Sync initialMember when open changes
+  // Sync initialMember and fetch billing settings when open changes
   useEffect(() => {
     if (open) {
+      apiClient.get<any>('/gym/billing')
+        .then((res) => {
+          const data = res?.billing || res;
+          if (data) {
+            setBillingSettings(data);
+            const isEngineActive = data.enable_gst_engine !== false && Number(data.total_gst_rate) > 0;
+            setIncludeGst(isEngineActive);
+          }
+        })
+        .catch(() => {});
+
       setStep(initialStep ?? 0);
       if (initialMember) {
         setPersonId(initialMember.id);
@@ -150,16 +165,20 @@ export function EnrollmentModal({
 
       apiClient.get<any[]>('/memberships/payment-methods')
         .then((fetchedPm) => {
-          if (Array.isArray(fetchedPm)) {
+          if (Array.isArray(fetchedPm) && fetchedPm.length > 0) {
             const list = fetchedPm.map((p) => (typeof p === 'string' ? p : p.name));
             setPaymentMethodsList(list);
-            if (list.length > 0 && !paymentMethod) {
-              setPaymentMethod(list[0]);
-            }
+            if (!paymentMethod) setPaymentMethod(list[0]);
+          } else {
+            const defaultMethods = ['Cash', 'Card / PineLabs', 'Razorpay UPI', 'Wallet', 'Pay Later', 'Split Payment'];
+            setPaymentMethodsList(defaultMethods);
+            if (!paymentMethod) setPaymentMethod(defaultMethods[0]);
           }
         })
         .catch(() => {
-          setPaymentMethodsList([]);
+          const defaultMethods = ['Cash', 'Card / PineLabs', 'Razorpay UPI', 'Wallet', 'Pay Later', 'Split Payment'];
+          setPaymentMethodsList(defaultMethods);
+          if (!paymentMethod) setPaymentMethod(defaultMethods[0]);
         });
     }
   }, [open]);
@@ -488,11 +507,8 @@ export function EnrollmentModal({
     });
     setSelectedProgramId('prog_gym');
     setSelectedDurationDays(30);
-    setSelectedProgramCategory('all');
-    setStartDate(getTodayISO());
-    setExpiryDate(addDaysISO(getTodayISO(), 30));
-    setPaymentMethod('UPI');
-    setIncludeGst(true);
+    const isEngineActive = billingSettings ? (billingSettings.enable_gst_engine !== false && Number(billingSettings.total_gst_rate) > 0) : true;
+    setIncludeGst(isEngineActive);
     setBiometricType(null);
     setSelectedDevice('');
     setCaptureState('idle');
@@ -502,8 +518,11 @@ export function EnrollmentModal({
 
   if (!open) return null;
 
+  const isGstActive = billingSettings ? (billingSettings.enable_gst_engine !== false && Number(billingSettings.total_gst_rate) > 0) : true;
+  const effectiveGstRate = billingSettings && isGstActive ? Number(billingSettings.total_gst_rate || 0) : (isGstActive ? 18 : 0);
+
   const subtotal = currentActivePricing.price;
-  const gst = includeGst ? Math.round(subtotal * 0.18) : 0;
+  const gst = includeGst && isGstActive && effectiveGstRate > 0 ? Math.round(subtotal * (effectiveGstRate / 100)) : 0;
   const total = subtotal + gst;
 
   const availableDevices = biometricType ? devices.filter((d) => d.status === 'online' && d.capabilities.includes(biometricType)) : devices;
@@ -1070,10 +1089,15 @@ export function EnrollmentModal({
 
                 <div>
                   <label className="text-sm font-semibold text-navy-700 mb-2 block">
-                    {personType === 'trainer' ? 'Preferred Payout Mode' : 'Payment Method'}
+                    Preferred Trainer Payout Mode
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {paymentMethodsList.map((m) => (
+                    {[
+                      'Direct Bank Transfer (NEFT/IMPS)',
+                      'UPI Transfer',
+                      'Cash Payout',
+                      'Company Cheque'
+                    ].map((m) => (
                       <button
                         key={m}
                         type="button"
@@ -1107,10 +1131,10 @@ export function EnrollmentModal({
 
                   {paymentMethod === 'Custom' && (
                     <div className="mt-3 animate-fade-in">
-                      <label className="text-xs font-semibold text-navy-600 mb-1 block">Custom Payment Method Name</label>
+                      <label className="text-xs font-semibold text-navy-600 mb-1 block">Custom Payout Mode Name</label>
                       <input
                         type="text"
-                        placeholder="e.g. PhonePe QR, GPay, HDFC Direct, Company Voucher"
+                        placeholder="e.g. Payroll Direct Deposit, Third-Party Agency, Wire"
                         value={customPaymentMethod}
                         onChange={(e) => setCustomPaymentMethod(e.target.value)}
                         className="input-field text-xs py-2"
@@ -1145,14 +1169,15 @@ export function EnrollmentModal({
                     <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-navy-800 hover:text-brand-600 transition-colors">
                       <input
                         type="checkbox"
-                        checked={includeGst}
+                        checked={includeGst && isGstActive}
+                        disabled={!isGstActive}
                         onChange={(e) => setIncludeGst(e.target.checked)}
-                        className="w-4 h-4 rounded border-navy-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                        className="w-4 h-4 rounded border-navy-300 text-brand-600 focus:ring-brand-500 cursor-pointer disabled:opacity-50"
                       />
-                      <span>Include GST (18%)</span>
+                      <span>{isGstActive ? `Include GST (${effectiveGstRate}%)` : 'GST Engine Disabled (0% Nil)'}</span>
                     </label>
-                    <span className={cn('text-sm font-semibold', includeGst ? 'text-navy-700' : 'text-navy-400')}>
-                      {includeGst ? `₹${gst.toLocaleString('en-IN')}` : '₹0 (Without GST)'}
+                    <span className={cn('text-sm font-semibold', includeGst && isGstActive ? 'text-navy-700' : 'text-navy-400')}>
+                      {includeGst && isGstActive ? `₹${gst.toLocaleString('en-IN')}` : '₹0 (Without GST)'}
                     </span>
                   </div>
 
@@ -1161,53 +1186,18 @@ export function EnrollmentModal({
                     <span className="text-brand-600 font-extrabold text-lg">₹{total.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
-                <div>
-                  <label className="text-sm font-semibold text-navy-700 mb-2 block">Payment Method</label>
-                  <div className="flex flex-wrap gap-2">
-                    {paymentMethodsList.map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => {
-                          setPaymentMethod(m);
-                          setCustomPaymentMethod('');
-                        }}
-                        className={cn(
-                          'px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all border cursor-pointer',
-                          paymentMethod === m && !customPaymentMethod
-                            ? 'bg-brand-600 text-white border-brand-600 shadow-glow scale-105'
-                            : 'bg-navy-50 text-navy-600 border-navy-200 hover:bg-navy-100'
-                        )}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('Custom')}
-                      className={cn(
-                        'px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all border cursor-pointer',
-                        paymentMethod === 'Custom'
-                          ? 'bg-brand-600 text-white border-brand-600 shadow-glow scale-105'
-                          : 'bg-navy-50 text-navy-600 border-navy-200 hover:bg-navy-100'
-                      )}
-                    >
-                      + Other / Custom
-                    </button>
-                  </div>
-
-                  {paymentMethod === 'Custom' && (
-                    <div className="mt-3 animate-fade-in">
-                      <label className="text-xs font-semibold text-navy-600 mb-1 block">Custom Payment Method Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. PhonePe QR, GPay, HDFC Direct, Company Voucher"
-                        value={customPaymentMethod}
-                        onChange={(e) => setCustomPaymentMethod(e.target.value)}
-                        className="input-field text-xs py-2"
-                      />
-                    </div>
-                  )}
+                {/* POS Terminal Payment Module */}
+                <div className="pt-2">
+                  <PaymentTerminalSelector
+                    totalAmount={total}
+                    customerName={form.name}
+                    customerPhone={form.phone}
+                    selectedMethod={paymentMethod || 'Cash'}
+                    onMethodChange={(method, payload) => {
+                      setPaymentMethod(method);
+                      setPaymentDetails(payload);
+                    }}
+                  />
                 </div>
                 <div className="flex gap-2"><button onClick={() => setStep(1)} className="btn-secondary flex-1 flex items-center justify-center gap-2"><Icon name="chevron-left" size={16} /> Back</button><button onClick={() => setStep(3)} className="btn-primary flex-1 flex items-center justify-center gap-2">Continue <Icon name="chevron-right" size={16} /></button></div>
               </div>
@@ -1466,7 +1456,7 @@ export function EnrollmentModal({
                     <div className="flex justify-between"><span className="text-navy-400">Plan Validity</span><span className="font-semibold text-navy-900">{startDate} to {expiryDate}</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Expiry (DD-MM-YY)</span><span className="font-bold text-brand-600">{formatDateDDMMYY(expiryDate)}</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Payment Method</span><span className="font-bold text-brand-600">{activePaymentMethod}</span></div>
-                    <div className="flex justify-between"><span className="text-navy-400">GST Billing</span><span className="font-semibold text-navy-900">{includeGst ? `Include GST 18% (₹${gst.toLocaleString('en-IN')})` : 'Without GST (0%)'}</span></div>
+                    <div className="flex justify-between"><span className="text-navy-400">GST Billing</span><span className="font-semibold text-navy-900">{includeGst && isGstActive && effectiveGstRate > 0 ? `Include GST ${effectiveGstRate}% (₹${gst.toLocaleString('en-IN')})` : 'Without GST (0%)'}</span></div>
                     <div className="flex justify-between text-base font-bold text-navy-900 pt-2 border-t border-navy-100"><span>Total Amount</span><span className="text-brand-600 font-extrabold text-lg">₹{total.toLocaleString('en-IN')}</span></div>
                   </>
                 )}
@@ -1498,6 +1488,11 @@ export function EnrollmentModal({
                         join_date: form.join_date,
                       });
                     } else {
+                      const finalPlanPrice = includeGst ? total : subtotal;
+                      const finalPaid = paymentDetails ? paymentDetails.paidAmount : finalPlanPrice;
+                      const finalDue = paymentDetails ? paymentDetails.dueAmount : Math.max(0, finalPlanPrice - finalPaid);
+                      const finalTxId = paymentDetails?.transactionId;
+
                       await membersApi.create({
                         name: form.name,
                         email: form.email,
@@ -1508,8 +1503,11 @@ export function EnrollmentModal({
                         branch: form.branch,
                         primary_gym_location: form.branch,
                         membership: `${currentProgram?.name} (${durationLabel})`,
-                        plan_price: subtotal,
+                        plan_price: finalPlanPrice,
+                        paid_amount: finalPaid,
+                        due_amount: finalDue,
                         payment_method: activePm,
+                        transaction_id: finalTxId,
                         start_date: startDate,
                         expiry_date: expiryDate,
                       } as Parameters<typeof membersApi.create>[0]);

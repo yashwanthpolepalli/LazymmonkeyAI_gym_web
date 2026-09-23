@@ -13,14 +13,22 @@ import type { Member } from '@/types';
 import { cn } from '@/utils/cn';
 import { EnrollmentModal } from '@/components/EnrollmentModal';
 import { formatDateDDMMYY, getTodayISO, addDaysISO } from '@/utils/date';
+import { PaymentTerminalSelector, type PaymentDetailsPayload, type PaymentMethodType } from '@/components/payments/PaymentTerminalSelector';
 
 interface PlanItem {
   id?: string;
+  owner_id?: string;
+  branch_id?: string;
   name: string;
+  category?: string;
   price: number;
   duration_days?: number;
   period?: string;
   features?: string[];
+  badge?: string;
+  color?: string;
+  is_combo?: boolean;
+  isCombo?: boolean;
 }
 
 const statusConfig: Record<Member['status'], { variant: 'success' | 'warning' | 'danger' | 'brand' | 'ai' | 'neutral'; label: string }> = {
@@ -50,17 +58,159 @@ export function MembersPage() {
   const [slotDateFilter, setSlotDateFilter] = useState<'all' | 'today' | 'upcoming'>('all');
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [togglingVideoId, setTogglingVideoId] = useState<string | null>(null);
 
   // Renewal Modal state
   const [renewalOpen, setRenewalOpen] = useState(false);
   const [plans, setPlans] = useState<PlanItem[]>([]);
-  const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
+  const [billingSettings, setBillingSettings] = useState<any>(null);
+  const [renewalSelectedProgramId, setRenewalSelectedProgramId] = useState<string>('');
+  const [renewalDurationDays, setRenewalDurationDays] = useState<number>(30);
+  const [renewalProgramCategory, setRenewalProgramCategory] = useState<string>('all');
+  const [renewalPlanSearch, setRenewalPlanSearch] = useState('');
   const [renewalStartDate, setRenewalStartDate] = useState(() => getTodayISO());
   const [renewalExpiryDate, setRenewalExpiryDate] = useState(() => addDaysISO(getTodayISO(), 30));
-  const [renewalPaymentMethod, setRenewalPaymentMethod] = useState('UPI');
+  const [renewalPaymentMethod, setRenewalPaymentMethod] = useState<PaymentMethodType>('Cash');
+  const [renewalPaymentDetails, setRenewalPaymentDetails] = useState<PaymentDetailsPayload | null>(null);
+  const [renewalIncludeGst, setRenewalIncludeGst] = useState(true);
   const [renewing, setRenewing] = useState(false);
 
   const navigate = useNavigate();
+
+  // Dynamic workout programs structured 100% from database plans
+  const workoutPrograms = (() => {
+    if (!plans || plans.length === 0) return [];
+
+    const programMap = new Map<string, {
+      id: string;
+      name: string;
+      category: string;
+      categoryLabel: string;
+      programType: 'combos' | 'training' | 'classes' | 'pt';
+      isCombo: boolean;
+      badge: string;
+      color: string;
+      features: string[];
+      plans: PlanItem[];
+    }>();
+
+    plans.forEach((cp) => {
+      const isCombo = cp.is_combo !== undefined
+        ? Boolean(cp.is_combo || cp.isCombo)
+        : Boolean((cp.category || '').includes('_') || cp.name.includes('+'));
+      const isClass = (cp.category || '').includes('dance') || (cp.category || '').includes('yoga') || (cp.category || '').includes('zumba');
+      const isPt = (cp.category || '').includes('pt') || (cp.category || '').includes('trainer');
+      const programType: 'combos' | 'training' | 'classes' | 'pt' = isCombo ? 'combos' : isClass ? 'classes' : isPt ? 'pt' : 'training';
+
+      const key = cp.id || cp.name.trim();
+
+      if (!programMap.has(key)) {
+        const catLabel = (cp.category || 'Membership Program').replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        programMap.set(key, {
+          id: cp.id || `prog_${cp.name.toLowerCase().replace(/\s+/g, '_')}`,
+          name: cp.name,
+          category: cp.category || 'general',
+          categoryLabel: catLabel,
+          programType,
+          isCombo,
+          badge: cp.badge || (isCombo ? 'Combo' : ''),
+          color: cp.color || (isCombo ? 'from-rose-500 to-pink-600' : isPt ? 'from-amber-500 to-yellow-600' : isClass ? 'from-purple-500 to-indigo-600' : 'from-brand-500 to-brand-700'),
+          features: cp.features?.length ? cp.features : ['Full Access', 'Gym Floor & Facilities', 'Locker & Assessment'],
+          plans: [cp],
+        });
+      } else {
+        programMap.get(key)!.plans.push(cp);
+      }
+    });
+
+    return Array.from(programMap.values()).map((prog) => ({
+      id: prog.id,
+      name: prog.name,
+      category: prog.category,
+      categoryLabel: prog.categoryLabel,
+      programType: prog.programType,
+      isCombo: prog.isCombo,
+      badge: prog.badge,
+      color: prog.color,
+      features: prog.features,
+      getPriceForDuration: (days: number) => {
+        const exact = prog.plans.find((p) => (p.duration_days || 30) === days);
+        if (exact && typeof exact.price === 'number' && exact.price > 0) {
+          const periodLabel = days === 30 ? 'month' : days === 90 ? '3 months' : days === 180 ? '6 months' : days === 365 ? 'year' : `${days} days`;
+          return { price: exact.price, periodLabel, durationDays: days };
+        }
+
+        const basePlan = prog.plans[0];
+        const basePrice = basePlan?.price || 0;
+        const baseDays = basePlan?.duration_days || 30;
+
+        let multiplier = 1;
+        let periodLabel = 'month';
+
+        if (days === 30) {
+          multiplier = 1;
+          periodLabel = 'month';
+        } else if (days === 90) {
+          multiplier = 2.6;
+          periodLabel = '3 months';
+        } else if (days === 180) {
+          multiplier = 4.8;
+          periodLabel = '6 months';
+        } else if (days === 365) {
+          multiplier = 8.8;
+          periodLabel = 'year';
+        } else {
+          multiplier = baseDays > 0 ? (days / baseDays) : 1;
+          periodLabel = `${days} days`;
+        }
+
+        const calculatedPrice = basePrice > 0 ? Math.round((basePrice * multiplier) / 50) * 50 : 0;
+        return { price: calculatedPrice, periodLabel, durationDays: days };
+      },
+    }));
+  })();
+
+  const currentRenewalProgram = workoutPrograms.find((p) => p.id === renewalSelectedProgramId) || workoutPrograms[0];
+  const currentRenewalPricing = currentRenewalProgram
+    ? currentRenewalProgram.getPriceForDuration(renewalDurationDays)
+    : { price: 0, periodLabel: 'month', durationDays: renewalDurationDays };
+
+  const handleToggleVideoAccess = async (memberId: string, currentVal: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newVal = !currentVal;
+    
+    // Optimistic UI update
+    setMembers((prev) =>
+      prev.map((m) => (m.id === memberId ? { ...m, enable_workout_videos: newVal } : m))
+    );
+    setTogglingVideoId(memberId);
+
+    try {
+      await api.customers.toggleWorkoutVideoAccess(memberId, newVal);
+    } catch (_err) {
+      // Revert on error
+      setMembers((prev) =>
+        prev.map((m) => (m.id === memberId ? { ...m, enable_workout_videos: currentVal } : m))
+      );
+      alert('Failed to update workout video permission. Please try again.');
+    } finally {
+      setTogglingVideoId(null);
+    }
+  };
+
+  const handleBatchToggleVideos = async (enable: boolean) => {
+    if (selectedMemberIds.length === 0) return;
+    setMembers((prev) =>
+      prev.map((m) => (selectedMemberIds.includes(m.id) ? { ...m, enable_workout_videos: enable } : m))
+    );
+    try {
+      await Promise.all(
+        selectedMemberIds.map((id) => api.customers.toggleWorkoutVideoAccess(id, enable))
+      );
+    } catch (_err) {
+      fetchMembers();
+    }
+  };
 
   const fetchSlotBookings = () => {
     setSlotsLoading(true);
@@ -104,14 +254,27 @@ export function MembersPage() {
 
   useEffect(() => {
     fetchDynamicPlans();
+    api.settings.billing()
+      .then((res) => {
+        const data = res?.billing || res;
+        if (data) {
+          setBillingSettings(data);
+          const isEngineActive = data.enable_gst_engine !== false && Number(data.total_gst_rate) > 0;
+          setRenewalIncludeGst(isEngineActive);
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  // Auto calculate renewal expiry date when plan or start date changes
+  // Auto calculate renewal expiry date when duration or start date changes
   useEffect(() => {
-    const currentPlan = plans[selectedPlanIdx];
-    const duration = currentPlan?.duration_days ?? 30;
-    setRenewalExpiryDate(addDaysISO(renewalStartDate, duration));
-  }, [selectedPlanIdx, plans, renewalStartDate]);
+    setRenewalExpiryDate(addDaysISO(renewalStartDate, renewalDurationDays));
+  }, [renewalDurationDays, renewalStartDate]);
+
+  const handleDurationTierChange = (days: number) => {
+    setRenewalDurationDays(days);
+    setRenewalExpiryDate(addDaysISO(renewalStartDate, days));
+  };
 
   const filtered = members.filter((m) => {
     const name = m.name || (m as any).full_name || '';
@@ -128,7 +291,13 @@ export function MembersPage() {
       (filter === 'High Risk' && m.risk === 'high') ||
       (filter === 'VIP' && m.status === 'vip') ||
       (filter === 'Trial' && m.status === 'trial') ||
-      (filter === 'New' && (m.joinDate || '').startsWith('2024'));
+      (filter === 'New' && (() => {
+        if (!m.joinDate) return false;
+        const join = new Date(m.joinDate).getTime();
+        if (isNaN(join)) return false;
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        return join >= thirtyDaysAgo;
+      })());
     return matchesSearch && matchesFilter;
   });
 
@@ -179,8 +348,49 @@ export function MembersPage() {
 
   const handleOpenRenewalModal = () => {
     if (selectedMemberIds.length === 0) return;
-    fetchDynamicPlans();
+    setRenewalPlanSearch('');
     setRenewalStartDate(getTodayISO());
+    setRenewalProgramCategory('all');
+
+    // Smart-match current member's program & duration
+    const firstSelected = members.find((m) => selectedMemberIds.includes(m.id));
+    if (firstSelected?.membership) {
+      const memName = firstSelected.membership.toLowerCase();
+      // Match program
+      const matchedProg = workoutPrograms.find((prog) =>
+        memName.includes(prog.name.toLowerCase()) ||
+        prog.name.toLowerCase().includes(memName) ||
+        (prog.category && memName.includes(prog.category.toLowerCase()))
+      );
+      if (matchedProg) {
+        setRenewalSelectedProgramId(matchedProg.id);
+      } else {
+        setRenewalSelectedProgramId(workoutPrograms[0]?.id || '');
+      }
+
+      // Match duration
+      if (memName.includes('365') || memName.includes('year') || memName.includes('annual')) {
+        setRenewalDurationDays(365);
+      } else if (memName.includes('180') || memName.includes('6-month') || memName.includes('6 month')) {
+        setRenewalDurationDays(180);
+      } else if (memName.includes('90') || memName.includes('quarter') || memName.includes('quater')) {
+        setRenewalDurationDays(90);
+      } else {
+        setRenewalDurationDays(30);
+      }
+    } else {
+      setRenewalSelectedProgramId(workoutPrograms[0]?.id || '');
+      setRenewalDurationDays(30);
+    }
+
+    apiClient.get<PlanItem[]>('/memberships/plans')
+      .then((res) => {
+        if (Array.isArray(res)) {
+          setPlans(res);
+        }
+      })
+      .catch(() => {});
+
     setRenewalOpen(true);
   };
 
@@ -188,26 +398,47 @@ export function MembersPage() {
     e.preventDefault();
     if (selectedMemberIds.length === 0) return;
 
-    const currentPlan = plans[selectedPlanIdx] || { name: 'Standard Plan', price: 2500, duration_days: 30 };
+    if (!currentRenewalProgram) {
+      alert('Please select a valid membership program.');
+      return;
+    }
+
+    const durationLabel = renewalDurationDays === 30 ? 'Monthly (30 Days)' : renewalDurationDays === 90 ? 'Quarterly (90 Days)' : renewalDurationDays === 180 ? '6-Month (180 Days)' : renewalDurationDays === 365 ? 'Yearly (365 Days)' : `${renewalDurationDays} Days`;
+    const finalPlanName = `${currentRenewalProgram.name} (${durationLabel})`;
+
+    const isGstActive = billingSettings ? (billingSettings.enable_gst_engine !== false && Number(billingSettings.total_gst_rate) > 0) : true;
+    const effectiveGstRate = billingSettings && isGstActive ? Number(billingSettings.total_gst_rate || 0) : (isGstActive ? 18 : 0);
+
+    const subtotal = currentRenewalPricing.price;
+    const gst = renewalIncludeGst && isGstActive && effectiveGstRate > 0 ? Math.round(subtotal * (effectiveGstRate / 100)) : 0;
+    const totalAmount = subtotal + gst;
+
+    const paidAmount = renewalPaymentDetails?.paidAmount ?? totalAmount;
+    const dueAmount = renewalPaymentDetails?.dueAmount ?? Math.max(0, totalAmount - paidAmount);
+    const paymentMethod = renewalPaymentDetails?.paymentMethod ?? renewalPaymentMethod ?? 'Cash';
+    const transactionId = renewalPaymentDetails?.transactionId || undefined;
+
     setRenewing(true);
 
     try {
       for (const mId of selectedMemberIds) {
         await apiClient.post(`/memberships/renew/${mId}`, {
-          plan_name: currentPlan.name,
-          duration_days: currentPlan.duration_days || 30,
-          price: currentPlan.price,
-          paid_amount: currentPlan.price,
+          plan_name: finalPlanName,
+          duration_days: renewalDurationDays,
+          price: totalAmount,
+          paid_amount: paidAmount,
+          due_amount: dueAmount,
           start_date: renewalStartDate,
           expiry_date: renewalExpiryDate,
-          payment_method: renewalPaymentMethod,
+          payment_method: paymentMethod,
+          transaction_id: transactionId,
         });
       }
       setRenewalOpen(false);
       setSelectedMemberIds([]);
       fetchMembers();
     } catch (_err) {
-      /* handle gracefully */
+      alert('Failed to process renewal. Please try again.');
     } finally {
       setRenewing(false);
     }
@@ -222,6 +453,24 @@ export function MembersPage() {
           <div className="flex items-center gap-2">
             {activeTab === 'members' && (
               <>
+                {selectedMemberIds.length > 0 && (
+                  <div className="flex items-center gap-2 mr-1">
+                    <button
+                      onClick={() => handleBatchToggleVideos(true)}
+                      className="btn-secondary flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800"
+                      title="Enable workout videos for selected members"
+                    >
+                      <Icon name="play" size={13} className="text-emerald-600 fill-emerald-600" /> Unlock Videos ({selectedMemberIds.length})
+                    </button>
+                    <button
+                      onClick={() => handleBatchToggleVideos(false)}
+                      className="btn-secondary flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border-amber-300 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800"
+                      title="Lock workout videos for selected members"
+                    >
+                      <Icon name="lock" size={13} className="text-amber-600" /> Lock Videos ({selectedMemberIds.length})
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={handleOpenRenewalModal}
                   disabled={selectedMemberIds.length === 0}
@@ -319,12 +568,12 @@ export function MembersPage() {
           </div>
 
           {loading ? (
-            <SkeletonTable rows={8} cols={9} />
+            <SkeletonTable rows={8} cols={10} />
           ) : filtered.length === 0 ? (
             <EmptyState icon="!" title="No members found" description="Try adjusting your search or filters." />
           ) : (
             <div className="overflow-x-auto -mx-4 px-4">
-              <table className="w-full min-w-[950px]">
+              <table className="w-full min-w-[1050px]">
                 <thead>
                   <tr className="border-b border-navy-100">
                     <th className="px-3 py-3 w-10 text-center">
@@ -335,7 +584,7 @@ export function MembersPage() {
                         className="w-4 h-4 rounded border-navy-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                       />
                     </th>
-                    {['Member', 'Membership', 'Status', 'Attendance', 'Last Visit', 'Expiry', 'Revenue', 'Risk', ''].map((h) => (
+                    {['Member', 'Membership', 'Status', 'Attendance', 'Workout Videos', 'Last Visit', 'Expiry', 'Revenue', 'Risk', ''].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-navy-400 uppercase tracking-wider px-3 py-3">{h}</th>
                     ))}
                   </tr>
@@ -347,6 +596,8 @@ export function MembersPage() {
                     const statusConf = statusConfig[m.status] || { variant: 'success', label: m.status || 'Active' };
                     const riskConf = riskConfig[m.risk] || { variant: 'success', label: m.risk || 'Low' };
                     const isSelected = selectedMemberIds.includes(m.id);
+                    const isVideoEnabled = m.enable_workout_videos !== false;
+                    const isToggling = togglingVideoId === m.id;
 
                     return (
                       <tr
@@ -384,6 +635,44 @@ export function MembersPage() {
                               <div className="h-full rounded-full bg-brand-500" style={{ width: `${m.attendance || 0}%` }} />
                             </div>
                             <span className="text-xs text-navy-500 font-medium">{m.attendance || 0}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleVideoAccess(m.id, isVideoEnabled, e)}
+                              disabled={isToggling}
+                              title={isVideoEnabled ? 'Workout videos are ENABLED for this customer. Click to turn OFF.' : 'Workout videos are LOCKED for this customer. Click to turn ON.'}
+                              className={cn(
+                                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2',
+                                isVideoEnabled ? 'bg-emerald-500 hover:bg-emerald-600 shadow-sm' : 'bg-navy-200 dark:bg-navy-700 hover:bg-navy-300',
+                                isToggling && 'opacity-60 cursor-wait'
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'pointer-events-none inline-flex h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out items-center justify-center',
+                                  isVideoEnabled ? 'translate-x-5' : 'translate-x-0'
+                                )}
+                              >
+                                {isToggling ? (
+                                  <Icon name="refresh-cw" size={10} className="text-navy-500 animate-spin" />
+                                ) : isVideoEnabled ? (
+                                  <Icon name="play" size={9} className="text-emerald-600 fill-emerald-600 ml-0.5" />
+                                ) : (
+                                  <Icon name="lock" size={9} className="text-navy-400" />
+                                )}
+                              </span>
+                            </button>
+                            <span className={cn(
+                              'text-[11px] font-bold px-2 py-0.5 rounded-md transition-colors whitespace-nowrap',
+                              isVideoEnabled 
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/50' 
+                                : 'bg-navy-100 text-navy-500 border border-navy-200 dark:bg-navy-800 dark:text-navy-400 dark:border-navy-700'
+                            )}>
+                              {isVideoEnabled ? 'Videos ON' : 'Locked'}
+                            </span>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-sm text-navy-500">{m.lastVisit}</td>
@@ -519,9 +808,9 @@ export function MembersPage() {
 
       {/* Renewal Modal */}
       {renewalOpen && (
-        <div className="fixed inset-0 bg-navy-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-scale-in border border-navy-100">
-            <div className="flex items-center justify-between border-b border-navy-100 pb-3">
+        <div className="fixed inset-0 bg-navy-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl animate-scale-in border border-navy-100 my-auto">
+            <div className="flex items-center justify-between border-b border-navy-100 pb-3 sticky -top-5 sm:-top-6 bg-white/95 backdrop-blur-md z-10 pt-1">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center">
                   <Icon name="refresh-cw" size={18} className="text-brand-600" />
@@ -531,7 +820,7 @@ export function MembersPage() {
                   <p className="text-xs text-navy-400">Selected {selectedMembers.length} member(s) for renewal</p>
                 </div>
               </div>
-              <button onClick={() => setRenewalOpen(false)} className="text-navy-400 hover:text-navy-600">
+              <button onClick={() => setRenewalOpen(false)} className="text-navy-400 hover:text-navy-600 p-1.5 rounded-xl hover:bg-navy-50 transition">
                 <Icon name="x" size={18} />
               </button>
             </div>
@@ -548,34 +837,196 @@ export function MembersPage() {
             </div>
 
             <form onSubmit={handleExecuteRenewal} className="space-y-4">
-              {/* Select Plan */}
-              <div>
-                <label className="text-xs font-semibold text-navy-700 mb-2 block">Select Renewal Plan</label>
-                {plans.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-navy-400 font-medium bg-navy-50 rounded-xl border border-navy-200">
-                    No active membership plans created by owner yet. Please create plans on the Memberships page.
+              {/* Program Header & Search */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-navy-900 block">Select Program & Training Plan</label>
+                    <p className="text-[11px] text-navy-400">Choose workout program and duration tier. Price and billing auto-accommodate.</p>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {plans.map((p, idx) => (
-                      <button
-                        key={p.name + idx}
-                        type="button"
-                        onClick={() => setSelectedPlanIdx(idx)}
-                        className={cn(
-                          'p-3 rounded-xl border text-left transition-all',
-                          selectedPlanIdx === idx
-                            ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500/20'
-                            : 'border-navy-200 hover:border-navy-300 bg-white'
-                        )}
-                      >
-                        <div className="text-xs font-bold text-navy-900">{p.name}</div>
-                        <div className="text-sm font-bold text-brand-600 mt-0.5">₹{p.price.toLocaleString()}</div>
-                        <div className="text-[10px] text-navy-400">{p.duration_days || 30} Days Validity</div>
-                      </button>
-                    ))}
+                  <div className="relative min-w-[180px]">
+                    <input
+                      type="text"
+                      placeholder="Search programs..."
+                      value={renewalPlanSearch}
+                      onChange={(e) => setRenewalPlanSearch(e.target.value)}
+                      className="input-field text-xs py-1.5 pl-8 pr-3 w-full bg-navy-50"
+                    />
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none">
+                      <Icon name="search" size={12} />
+                    </div>
                   </div>
-                )}
+                </div>
+
+                {/* Program Categories Filter Pills */}
+                {(() => {
+                  const filterOptions = [
+                    { id: 'all', label: 'All Programs', icon: 'layers' },
+                    { id: 'combos', label: 'Combos & Hybrid', icon: 'flame' },
+                    { id: 'training', label: 'Training Programs', icon: 'activity' },
+                    { id: 'classes', label: 'Group Classes', icon: 'zap' },
+                    { id: 'pt', label: '1-on-1 PT', icon: 'award' },
+                  ];
+
+                  return (
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                      {filterOptions.map((opt) => {
+                        const isActive = renewalProgramCategory === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setRenewalProgramCategory(opt.id)}
+                            className={cn(
+                              'px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all flex items-center gap-1 border cursor-pointer shrink-0',
+                              isActive
+                                ? 'bg-brand-600 text-white border-brand-600 shadow-sm font-bold'
+                                : 'bg-white text-navy-600 border-navy-200 hover:border-navy-300 hover:bg-navy-50'
+                            )}
+                          >
+                            <Icon name={opt.icon} size={12} className={isActive ? 'text-white' : 'text-navy-500'} />
+                            <span>{opt.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Duration Tiers Selector */}
+                <div className="space-y-1.5 pt-1 border-t border-navy-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-bold text-navy-500 uppercase tracking-wider flex items-center gap-1">
+                      <Icon name="clock" size={11} className="text-brand-500" /> Duration Tiers
+                    </div>
+                    <div className="text-[10px] text-brand-600 font-bold bg-brand-50 border border-brand-100 px-2 py-0.5 rounded-full">
+                      {renewalDurationDays === 30 ? 'Monthly (30D)' : renewalDurationDays === 90 ? 'Quarterly (90D)' : renewalDurationDays === 180 ? '6-Month (180D)' : 'Yearly (365D)'}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {[
+                      { days: 30, label: 'Monthly (30D)' },
+                      { days: 90, label: 'Quarterly (90D)' },
+                      { days: 180, label: '6-Month (180D)' },
+                      { days: 365, label: 'Yearly (365D)' },
+                    ].map((tier) => {
+                      const isActive = renewalDurationDays === tier.days;
+                      return (
+                        <button
+                          key={tier.days}
+                          type="button"
+                          onClick={() => handleDurationTierChange(tier.days)}
+                          className={cn(
+                            'px-2 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer flex flex-col items-center justify-center',
+                            isActive
+                              ? 'bg-brand-50 border-brand-500 text-brand-700 ring-2 ring-brand-500/20 shadow-sm'
+                              : 'bg-white border-navy-200 text-navy-600 hover:border-navy-300 hover:bg-navy-50/60'
+                          )}
+                        >
+                          <span>{tier.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Scrollable Programs List */}
+                {(() => {
+                  const filteredPrograms = workoutPrograms.filter((p) => {
+                    if (renewalProgramCategory !== 'all') {
+                      if (renewalProgramCategory === 'combos' && !p.isCombo) return false;
+                      if (renewalProgramCategory === 'training' && (p.isCombo || p.programType !== 'training')) return false;
+                      if (renewalProgramCategory === 'classes' && (p.isCombo || p.programType !== 'classes')) return false;
+                      if (renewalProgramCategory === 'pt' && (p.isCombo || p.programType !== 'pt')) return false;
+                    }
+                    if (renewalPlanSearch.trim()) {
+                      const q = renewalPlanSearch.toLowerCase();
+                      const matchesName = p.name.toLowerCase().includes(q);
+                      const matchesCategory = p.categoryLabel.toLowerCase().includes(q);
+                      const matchesFeatures = p.features.some((f) => f.toLowerCase().includes(q));
+                      if (!matchesName && !matchesCategory && !matchesFeatures) return false;
+                    }
+                    return true;
+                  });
+
+                  if (filteredPrograms.length === 0) {
+                    return (
+                      <div className="card p-4 text-center bg-navy-50/60 border border-navy-200">
+                        <p className="text-xs font-bold text-navy-700">No matching programs found</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenewalProgramCategory('all');
+                            setRenewalPlanSearch('');
+                          }}
+                          className="mt-1.5 text-xs font-bold text-brand-600 hover:text-brand-700 underline cursor-pointer"
+                        >
+                          Reset filters
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="bg-slate-50/60 rounded-2xl border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto space-y-1.5 custom-scrollbar">
+                      {filteredPrograms.map((prog) => {
+                        const isSelected = renewalSelectedProgramId === prog.id;
+                        const pricing = prog.getPriceForDuration(renewalDurationDays);
+                        const cardColor = prog.color || 'from-brand-500 to-brand-700';
+
+                        return (
+                          <div
+                            key={prog.id}
+                            onClick={() => setRenewalSelectedProgramId(prog.id)}
+                            className={cn(
+                              'p-2.5 sm:p-3 rounded-xl border transition-all duration-150 cursor-pointer flex items-center justify-between gap-2.5',
+                              isSelected
+                                ? 'bg-white border-brand-500 shadow-sm ring-2 ring-brand-500/20'
+                                : 'bg-white/90 border-slate-200 hover:border-slate-300 hover:bg-white'
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div
+                                className={cn(
+                                  'w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center shrink-0 shadow-sm text-white',
+                                  cardColor
+                                )}
+                              >
+                                <Icon name={prog.isCombo ? 'flame' : 'credit-card'} size={15} />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-bold text-navy-900 line-clamp-1">
+                                    {prog.name}
+                                  </span>
+                                  {prog.isCombo && (
+                                    <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-rose-50 text-rose-700 border border-rose-200 uppercase">
+                                      Combo
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-brand-600 font-semibold truncate">
+                                  {prog.categoryLabel}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Price for current duration */}
+                            <div className="text-right shrink-0">
+                              <div className="text-sm font-extrabold text-navy-900">
+                                ₹{pricing.price.toLocaleString('en-IN')}
+                              </div>
+                              <div className="text-[10px] text-navy-400">
+                                {renewalDurationDays} Days
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Renewal Date Range */}
@@ -592,7 +1043,10 @@ export function MembersPage() {
                     <input
                       type="date"
                       value={renewalStartDate}
-                      onChange={(e) => setRenewalStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setRenewalStartDate(e.target.value);
+                        setRenewalExpiryDate(addDaysISO(e.target.value, renewalDurationDays));
+                      }}
                       className="input-field text-xs py-1.5"
                     />
                   </div>
@@ -608,35 +1062,66 @@ export function MembersPage() {
                 </div>
               </div>
 
-              {/* Payment Method */}
-              <div>
-                <label className="text-xs font-semibold text-navy-700 mb-1.5 block">Payment Method</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {['UPI', 'Cash', 'Card', 'Online'].map((pm) => (
-                    <button
-                      key={pm}
-                      type="button"
-                      onClick={() => setRenewalPaymentMethod(pm)}
-                      className={cn(
-                        'py-2 rounded-xl text-xs font-semibold transition-all',
-                        renewalPaymentMethod === pm
-                          ? 'bg-brand-600 text-white shadow-glow'
-                          : 'bg-navy-50 text-navy-600 hover:bg-navy-100'
-                      )}
-                    >
-                      {pm}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Pricing & GST Summary */}
+              {currentRenewalProgram && (() => {
+                const isGstActive = billingSettings ? (billingSettings.enable_gst_engine !== false && Number(billingSettings.total_gst_rate) > 0) : true;
+                const effectiveGstRate = billingSettings && isGstActive ? Number(billingSettings.total_gst_rate || 0) : (isGstActive ? 18 : 0);
+                const subtotal = currentRenewalPricing.price;
+                const gst = renewalIncludeGst && isGstActive && effectiveGstRate > 0 ? Math.round(subtotal * (effectiveGstRate / 100)) : 0;
+                const totalAmount = subtotal + gst;
 
-              <div className="flex gap-2 pt-2">
+                return (
+                  <>
+                    <div className="card p-3 bg-navy-50/80 rounded-2xl border border-navy-200/80 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-navy-600">
+                        <span>Base Subtotal ({currentRenewalProgram.name})</span>
+                        <span className="font-semibold text-navy-900">₹{subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-navy-600">
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={renewalIncludeGst && isGstActive}
+                            disabled={!isGstActive}
+                            onChange={(e) => setRenewalIncludeGst(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-navy-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50"
+                          />
+                          <span>{isGstActive ? `Include GST (${effectiveGstRate}%)` : 'GST Engine Disabled (0% Nil)'}</span>
+                        </label>
+                        <span className="font-semibold text-navy-900">
+                          ₹{gst.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="border-t border-navy-200 pt-2 flex items-center justify-between">
+                        <span className="text-xs font-bold text-navy-900">Total Renewal Amount</span>
+                        <span className="text-base font-bold text-brand-600">
+                          ₹{totalAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dynamic POS Payment Terminal Selector */}
+                    <PaymentTerminalSelector
+                      totalAmount={totalAmount}
+                      customerName={selectedMembers[0]?.name || ''}
+                      customerPhone={selectedMembers[0]?.phone || ''}
+                      selectedMethod={renewalPaymentMethod}
+                      onMethodChange={(method, payload) => {
+                        setRenewalPaymentMethod(method);
+                        setRenewalPaymentDetails(payload);
+                      }}
+                    />
+                  </>
+                );
+              })()}
+
+              <div className="flex gap-2 pt-3 pb-1 border-t border-navy-100 sticky -bottom-5 sm:-bottom-6 bg-white/95 backdrop-blur-md z-10">
                 <button type="button" onClick={() => setRenewalOpen(false)} className="btn-secondary flex-1">
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={renewing}
+                  disabled={renewing || plans.length === 0}
                   className="btn-primary flex-1 bg-success-600 hover:bg-success-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <Icon name="check-circle" size={16} />

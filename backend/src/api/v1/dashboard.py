@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.services.dashboard_service import DashboardService
+from src.api.deps import get_current_user
+from src.models.user import User
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -11,8 +14,12 @@ def get_customer_dashboard(customer_id: str = "active", db: Session = Depends(ge
     return DashboardService.get_aggregated_dashboard(db, customer_id if customer_id != "active" else None)
 
 @router.get("/owner")
-def get_owner_dashboard(db: Session = Depends(get_db)):
-    return DashboardService.get_owner_dashboard(db)
+def get_owner_dashboard(
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user),
+    branch_id: Optional[str] = Query(None)
+):
+    return DashboardService.get_owner_dashboard(db, branch_id=branch_id, current_user=current_user)
 
 @router.get("/trainer")
 def get_trainer_dashboard(db: Session = Depends(get_db)):

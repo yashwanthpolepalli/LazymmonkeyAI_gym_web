@@ -157,6 +157,8 @@ def get_customer_profile(
         "target_fiber": cust.target_fiber,
         "profile_image": cust.profile_image,
         "status": cust.status,
+        "enable_workout_videos": bool(cust.enable_workout_videos if cust.enable_workout_videos is not None else True),
+        "has_video_access": bool(cust.enable_workout_videos if cust.enable_workout_videos is not None else True),
         "membership": membership_data,
     }
 
@@ -1027,6 +1029,7 @@ def get_customer_todays_workout(
             "workout": None,
         }
 
+    has_video_access = bool(cust.enable_workout_videos if cust.enable_workout_videos is not None else True)
     exercises = []
     for item in workout.exercises:
         exercise = (
@@ -1042,12 +1045,14 @@ def get_customer_todays_workout(
             "reps": item.reps,
             "rest_seconds": item.rest_seconds,
             "weight_kg": item.weight,
-            "video_url": exercise.video_url if exercise else None,
+            "video_url": (exercise.video_url if exercise else None) if has_video_access else None,
             "image_url": exercise.image_url if exercise else None,
+            "has_video_access": has_video_access,
         })
 
     return {
         "status": "READY",
+        "has_video_access": has_video_access,
         "workout": {
             "id": workout.id,
             "name": workout.name,
@@ -1090,6 +1095,7 @@ def get_exercises_for_muscle(
     db: Session = Depends(get_db),
 ):
     """Returns exercises 100% dynamically from 873+ free exercise database with exact media."""
+    has_video_access = bool(cust.enable_workout_videos if cust.enable_workout_videos is not None else True)
     raw_exercises = free_exercise_service.get_exercises_by_muscle(
         muscle=muscle_id if muscle_id and muscle_id.lower() != 'all' else 'all',
         limit=30
@@ -1145,6 +1151,10 @@ def get_exercises_for_muscle(
             if not mistakes_list:
                 mistakes_list = demo_meta.get("common_mistakes", [])
 
+        # If video access is disabled for this customer, mask the video URL and set status
+        actual_video_url = v_url if has_video_access else None
+        actual_video_status = v_status if has_video_access else "LOCKED_BY_GYM"
+
         formatted_exercises.append({
             "id": ex.id,
             "name": ex.name,
@@ -1154,10 +1164,11 @@ def get_exercises_for_muscle(
             "equipment": ex.equipment,
             "difficulty": ex.difficulty,
             "mechanic": ex.movement_pattern,
-            "video_url": v_url,
-            "video_type": v_type,
-            "video_status": v_status,
+            "video_url": actual_video_url,
+            "video_type": v_type if has_video_access else None,
+            "video_status": actual_video_status,
             "video_source": ex.video_source or ex.source,
+            "has_video_access": has_video_access,
             "thumbnail_url": ex.thumbnail_url or ex.image_url,
             "thumbnail_url_alt": ex.image_url or ex.thumbnail_url,
             "instructions": instr_list if instr_list else ([ex.description] if ex.description else []),
@@ -1170,16 +1181,18 @@ def get_exercises_for_muscle(
     if isinstance(difficulty, str) and difficulty and difficulty.lower() != "all":
         formatted_exercises = [ex for ex in formatted_exercises if ex.get("difficulty") and ex["difficulty"].lower() == difficulty.lower()]
 
-    # Mint MuscleWiki Media Token if configured and attach to streaming URLs
-    media_token = musclewiki_service.mint_media_token()
-    if media_token:
-        for ex in formatted_exercises:
-            v_url = ex.get("video_url") or ""
-            if "api.musclewiki.com/stream/" in v_url and "?token=" not in v_url:
-                ex["video_url"] = f"{v_url}?token={media_token}"
+    # Mint MuscleWiki Media Token if configured and attach to streaming URLs (only if video access enabled)
+    if has_video_access:
+        media_token = musclewiki_service.mint_media_token()
+        if media_token:
+            for ex in formatted_exercises:
+                v_url = ex.get("video_url") or ""
+                if "api.musclewiki.com/stream/" in v_url and "?token=" not in v_url:
+                    ex["video_url"] = f"{v_url}?token={media_token}"
 
     return {
         "muscle_id": muscle_id,
+        "has_video_access": has_video_access,
         "count": len(formatted_exercises),
         "exercises": formatted_exercises,
     }
@@ -1195,6 +1208,7 @@ def get_exercises_by_muscle_tab(
     res = get_exercises_for_muscle(muscle_id=muscle or "all", cust=cust, db=db)
     return {
         "muscle": muscle,
+        "has_video_access": res.get("has_video_access", True),
         "count": res["count"],
         "exercises": res["exercises"],
     }
@@ -1221,6 +1235,7 @@ def get_exercise_details(
     db: Session = Depends(get_db),
 ):
     """Returns comprehensive exercise detail, video status, form cues, and customer progression history from PostgreSQL DB."""
+    has_video_access = bool(cust.enable_workout_videos if cust.enable_workout_videos is not None else True)
     # 1. Query PostgreSQL Exercise table
     db_ex = db.query(Exercise).filter(
         (Exercise.id == exercise_id) | (Exercise.source_id == exercise_id) | (func.lower(Exercise.name) == exercise_id.lower())
@@ -1243,10 +1258,11 @@ def get_exercise_details(
             "equipment": db_ex.equipment,
             "difficulty": db_ex.difficulty,
             "movement_pattern": db_ex.movement_pattern,
-            "video_url": v_url,
-            "video_type": v_type,
-            "video_status": db_ex.video_status or ("ACTIVE" if v_url else "UNAVAILABLE"),
+            "video_url": v_url if has_video_access else None,
+            "video_type": v_type if has_video_access else None,
+            "video_status": (db_ex.video_status or ("ACTIVE" if v_url else "UNAVAILABLE")) if has_video_access else "LOCKED_BY_GYM",
             "video_source": db_ex.video_source or db_ex.source,
+            "has_video_access": has_video_access,
             "thumbnail_url": db_ex.thumbnail_url or db_ex.image_url,
             "thumbnail_url_alt": db_ex.image_url or db_ex.thumbnail_url,
             "instructions": instr_list if instr_list else ([db_ex.description] if db_ex.description else []),
@@ -1257,6 +1273,11 @@ def get_exercise_details(
     else:
         ex_data = musclewiki_service.get_exercise(exercise_id)
         search_term = (ex_data.get('name') if ex_data else exercise_id)
+        if ex_data and not has_video_access:
+            ex_data["video_url"] = None
+            ex_data["video_type"] = None
+            ex_data["video_status"] = "LOCKED_BY_GYM"
+            ex_data["has_video_access"] = False
 
     if not ex_data:
         raise HTTPException(status_code=404, detail="Exercise not found")

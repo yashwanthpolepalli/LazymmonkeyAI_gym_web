@@ -48,5 +48,10 @@ frontend/.env
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
-
+# Repositories & Local Folders
+backend_repo/
+backend/data/images/
+backend/whatsapp_gateway/.wwebjs_auth/
+backend/whatsapp_gateway/.wwebjs_cache/
+backend/whatsapp_gateway/node_modules/
+frontend/public/downloads/

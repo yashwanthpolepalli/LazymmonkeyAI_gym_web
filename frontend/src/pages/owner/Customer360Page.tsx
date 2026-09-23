@@ -23,6 +23,7 @@ export function Customer360Page() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState('Overview');
+  const [togglingVideo, setTogglingVideo] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -41,11 +42,68 @@ export function Customer360Page() {
   if (loading) return <div className="space-y-4"><Skeleton className="h-32 w-full" /><Skeleton className="h-64 w-full" /></div>;
   if (!member) return null;
 
+  const isVideoEnabled = member.enable_workout_videos !== false;
+
+  const handleToggleVideo = async () => {
+    const newVal = !isVideoEnabled;
+    setMember({ ...member, enable_workout_videos: newVal });
+    setTogglingVideo(true);
+    try {
+      await api.customers.toggleWorkoutVideoAccess(member.id, newVal);
+    } catch (_err) {
+      setMember({ ...member, enable_workout_videos: isVideoEnabled });
+      alert('Failed to update workout video permission.');
+    } finally {
+      setTogglingVideo(false);
+    }
+  };
+
   const statusVariant = member.status === 'active' ? 'success' : member.status === 'expiring' ? 'warning' : member.status === 'vip' ? 'brand' : 'neutral';
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Customer 360" breadcrumb={['Owner', 'Customers', member.name]} actions={<button onClick={() => navigate('/owner/customers')} className="btn-secondary"><Icon name="chevron-left" size={16} /> Back</button>} />
+      <PageHeader
+        title="Customer 360"
+        breadcrumb={['Owner', 'Customers', member.name]}
+        actions={
+          <div className="flex items-center gap-3">
+            {/* Video Access Toggle in Page Header */}
+            <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-white border border-navy-200 shadow-xs dark:bg-navy-800 dark:border-navy-700">
+              <span className="text-xs font-bold text-navy-700 dark:text-navy-300 flex items-center gap-1.5">
+                <Icon name="play" size={13} className={isVideoEnabled ? 'text-emerald-500 fill-emerald-500' : 'text-navy-400'} />
+                Workout Videos:
+              </span>
+              <button
+                type="button"
+                onClick={handleToggleVideo}
+                disabled={togglingVideo}
+                className={cn(
+                  'relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500',
+                  isVideoEnabled ? 'bg-emerald-500' : 'bg-navy-300 dark:bg-navy-600',
+                  togglingVideo && 'opacity-60 cursor-wait'
+                )}
+              >
+                <span
+                  className={cn(
+                    'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out',
+                    isVideoEnabled ? 'translate-x-5' : 'translate-x-0'
+                  )}
+                />
+              </button>
+              <span className={cn(
+                'text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded',
+                isVideoEnabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-navy-100 text-navy-600 dark:bg-navy-700 dark:text-navy-300'
+              )}>
+                {isVideoEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+
+            <button onClick={() => navigate('/owner/customers')} className="btn-secondary">
+              <Icon name="chevron-left" size={16} /> Back
+            </button>
+          </div>
+        }
+      />
 
       <div className="card p-6">
         <div className="flex flex-col sm:flex-row items-start gap-6">
@@ -56,6 +114,15 @@ export function Customer360Page() {
             <div className="flex items-center gap-3 mb-1">
               <h2 className="text-xl font-bold text-navy-900">{member.name}</h2>
               <Badge variant={statusVariant as 'success' | 'warning' | 'brand' | 'neutral'}>{member.status}</Badge>
+              <span className={cn(
+                'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border',
+                isVideoEnabled 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800' 
+                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800'
+              )}>
+                <Icon name={isVideoEnabled ? 'check-circle' : 'lock'} size={12} />
+                {isVideoEnabled ? 'Workout Videos Unlocked' : 'Videos Locked'}
+              </span>
             </div>
             <div className="text-sm text-navy-500 mb-3">{member.email} · {member.phone}</div>
             <div className="flex flex-wrap gap-4 text-sm">

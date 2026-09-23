@@ -34,6 +34,8 @@ export interface CustomerProfile {
   days_per_week?: number;
   profile_image: string;
   status: string;
+  enable_workout_videos?: boolean;
+  has_video_access?: boolean;
   membership: CustomerMembership;
 }
 

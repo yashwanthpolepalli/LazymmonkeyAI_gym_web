@@ -142,9 +142,9 @@ export function BookingHistoryModal({ open, onClose, onCancelSuccess }: BookingH
             <button
               onClick={() => setFilter('ALL')}
               className={cn(
-                'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5',
+                'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer',
                 filter === 'ALL'
-                  ? 'bg-navy-900 text-white shadow-xs'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-200/70'
               )}
             >

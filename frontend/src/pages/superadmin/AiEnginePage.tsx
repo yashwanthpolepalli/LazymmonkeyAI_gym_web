@@ -7,8 +7,9 @@ import { api } from '@/services/api';
 import { cn } from '@/utils/cn';
 
 const AVAILABLE_MODELS = [
-  { provider: 'Google', model_id: 'gemini-2.5-flash', label: 'Google Gemini 2.5 Flash (Ultra Fast)' },
-  { provider: 'Google', model_id: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro (Deep Reasoning)' },
+  { provider: 'Google', model_id: 'gemini-3.6-flash', label: 'Google Gemini 3.6 Flash (Recommended / Ultra Fast)' },
+  { provider: 'Google', model_id: 'gemini-3.5-flash', label: 'Google Gemini 3.5 Flash (Multimodal & Fast)' },
+  { provider: 'Google', model_id: 'gemini-3.5-flash-lite', label: 'Google Gemini 3.5 Flash Lite (Cost Efficient)' },
   { provider: 'OpenAI', model_id: 'gpt-4o', label: 'OpenAI GPT-4o (Multimodal Vision)' },
   { provider: 'OpenAI', model_id: 'gpt-4o-mini', label: 'OpenAI GPT-4o Mini (Cost Efficient)' },
   { provider: 'Anthropic', model_id: 'claude-3-5-sonnet', label: 'Anthropic Claude 3.5 Sonnet (State-of-the-Art)' },

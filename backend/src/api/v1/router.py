@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from src.api.v1.auth import router as auth_router
-from src.api.v1.customers import router as customers_router
+from src.api.v1.customers import router as customers_router, members_router
 from src.api.v1.memberships import router as memberships_router
 from src.api.v1.workouts import router as workouts_router
 from src.api.v1.nutrition import router as nutrition_router
@@ -22,8 +22,15 @@ from src.api.v1.customer_portal import router as customer_portal_router
 from src.api.v1.customer_workouts import router as customer_workouts_router
 from src.api.v1.crm import router as crm_router
 from src.api.v1.hrms import router as hrms_router
-from src.api.v1.customers import router as customers_router, members_router
+from src.api.v1.hrms_payroll import router as hrms_payroll_router
 from src.api.v1.brochures import router as brochures_router
+from src.api.v1.inventory import router as inventory_router
+from src.api.v1.pos import router as pos_router
+from src.api.v1.payments import router as payments_router
+from src.api.v1.notifications import router as notifications_router
+from src.api.v1.whatsapp import router as whatsapp_router
+from src.api.v1.companies import router as companies_router
+from src.api.v1.reviews import router as reviews_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -49,6 +56,17 @@ api_router.include_router(customer_portal_router)
 api_router.include_router(customer_workouts_router)
 api_router.include_router(crm_router)
 api_router.include_router(hrms_router)
+api_router.include_router(hrms_payroll_router)
 api_router.include_router(brochures_router)
+api_router.include_router(inventory_router)
+api_router.include_router(pos_router)
+api_router.include_router(payments_router)
+api_router.include_router(notifications_router)
+api_router.include_router(whatsapp_router)
+api_router.include_router(companies_router)
+api_router.include_router(reviews_router)
+
+
+
 
 

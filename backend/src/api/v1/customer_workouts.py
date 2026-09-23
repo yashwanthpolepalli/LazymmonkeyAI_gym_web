@@ -95,9 +95,23 @@ def get_exercise(exercise_id: int, service: ExerciseService = Depends(get_exerci
 
 
 @router.get("/exercises/{exercise_id}/videos")
-def get_exercise_videos(exercise_id: int, service: ExerciseService = Depends(get_exercise_service)):
-    """Returns video demonstration URLs for target exercise ID."""
-    return {"videos": service.get_videos(exercise_id)}
+def get_exercise_videos(
+    exercise_id: int,
+    cust: Customer = Depends(get_current_customer),
+    service: ExerciseService = Depends(get_exercise_service)
+):
+    """Returns video demonstration URLs for target exercise ID if customer has video access enabled by gym owner."""
+    has_video_access = bool(cust.enable_workout_videos if cust.enable_workout_videos is not None else True)
+    if not has_video_access:
+        return {
+            "videos": [],
+            "has_video_access": False,
+            "message": "Workout videos are locked by Gym Owner."
+        }
+    return {
+        "videos": service.get_videos(exercise_id),
+        "has_video_access": True
+    }
 
 
 @router.get("/search")

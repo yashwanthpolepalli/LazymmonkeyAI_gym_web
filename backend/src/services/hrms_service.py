@@ -8,7 +8,7 @@ from src.models.hrms import (
     Employee, Department, Designation, Team, EmployeeDocument,
     EmployeeAttendance, LeaveRequest, PayrollRecord,
     RecruitmentJob, JobApplicant, EmployeePerformance, ExitRequest,
-    GeofenceScheme
+    GeofenceScheme, LeaveType, EmployeeLeaveBalance
 )
 from src.models.trainer import TrainerProfile
 from src.models.payroll import PayrollInvoice
@@ -84,6 +84,7 @@ class HrmsService:
                 existing_emp.last_name = last_name
                 existing_emp.email = t.email
                 existing_emp.phone = t.phone or existing_emp.phone or ""
+                existing_emp.gender = t.gender or existing_emp.gender
                 existing_emp.designation = desg
                 existing_emp.department = dept
                 existing_emp.status = status
@@ -108,11 +109,12 @@ class HrmsService:
                     last_name=last_name,
                     email=t.email,
                     phone=t.phone or "",
+                    gender=t.gender,
                     designation=desg,
                     department=dept,
                     reporting_manager="Director / Owner",
                     joined_date=joined,
-                    employment_type="Full-Time",
+                    employment_type=role.title() if role in ["MANAGER", "STAFF"] else "Full-Time",
                     status=status,
                     salary=salary,
                     avatar="",
@@ -818,11 +820,341 @@ class HrmsService:
     # -------------------------------------------------------------
     # 4. LEAVE MANAGEMENT METHODS
     # -------------------------------------------------------------
-    # -------------------------------------------------------------
-    # 4. LEAVE MANAGEMENT METHODS
+    # 4. LEAVE MANAGEMENT & DYNAMIC POLICY CONFIGURATION ENGINE
     # -------------------------------------------------------------
     @staticmethod
+    def get_leave_types(db: Session, active_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Returns all leave types / policies configured in the DB.
+        Includes gender eligibility, paid/unpaid classification, quotas and rules.
+        """
+        query = db.query(LeaveType)
+        if active_only:
+            query = query.filter(LeaveType.is_active == True)
+        leave_types = query.order_by(LeaveType.created_at.asc()).all()
+        result = []
+        for lt in leave_types:
+            result.append({
+                "id": lt.id,
+                "name": lt.name,
+                "code": lt.code,
+                "category": lt.category or "General Leave",
+                "description": lt.description or "",
+                "paid_type": lt.paid_type or "PAID",
+                "is_paid": bool(lt.is_paid if lt.is_paid is not None else True),
+                "gender_eligibility": lt.gender_eligibility if isinstance(lt.gender_eligibility, list) else ["MALE", "FEMALE", "OTHER"],
+                "employment_types": lt.employment_types if isinstance(lt.employment_types, list) else ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"],
+                "applicable_departments": lt.applicable_departments if isinstance(lt.applicable_departments, list) else ["ALL"],
+                "applicable_designations": lt.applicable_designations if isinstance(lt.applicable_designations, list) else ["ALL"],
+                "min_service_days": lt.min_service_days or 0,
+                "annual_quota": float(lt.annual_quota or 0.0),
+                "max_consecutive_days": lt.max_consecutive_days,
+                "carry_forward_allowed": bool(lt.carry_forward_allowed),
+                "max_carry_forward_days": lt.max_carry_forward_days or 0,
+                "encashment_allowed": bool(lt.encashment_allowed),
+                "max_encashment_days": lt.max_encashment_days or 0,
+                "attachment_required": bool(lt.attachment_required),
+                "is_active": bool(lt.is_active if lt.is_active is not None else True),
+                "created_at": lt.created_at.isoformat() if lt.created_at else None,
+                "updated_at": lt.updated_at.isoformat() if lt.updated_at else None,
+            })
+        return result
+
+    @staticmethod
+    def create_leave_type(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Creates a new customizable leave policy in the DB."""
+        name = str(payload.get("name") or "").strip()
+        code = str(payload.get("code") or "").strip().upper()
+        if not name or not code:
+            raise ValueError("Leave Name and Code are required.")
+
+        existing = db.query(LeaveType).filter((LeaveType.code == code) | (LeaveType.name == name)).first()
+        if existing:
+            raise ValueError(f"Leave type with name '{name}' or code '{code}' already exists.")
+
+        paid_type = str(payload.get("paid_type") or ("PAID" if payload.get("is_paid", True) else "UNPAID")).upper()
+        is_paid = paid_type != "UNPAID"
+        category = str(payload.get("category") or "General Leave").strip()
+
+        genders = payload.get("gender_eligibility")
+        if genders is None:
+            genders = ["MALE", "FEMALE", "OTHER"]
+        elif isinstance(genders, str):
+            genders = [g.strip().upper() for g in genders.split(",") if g.strip()]
+        else:
+            genders = [str(g).strip().upper() for g in genders]
+
+        emp_types = payload.get("employment_types")
+        if emp_types is None:
+            emp_types = ["FULL_TIME", "PART_TIME", "CONTRACT", "PERMANENT", "PROBATION"]
+        elif isinstance(emp_types, str):
+            emp_types = [e.strip().upper() for e in emp_types.split(",") if e.strip()]
+        else:
+            emp_types = [str(e).strip().upper() for e in emp_types]
+
+        lt = LeaveType(
+            id=f"lt_{uuid.uuid4().hex[:8]}",
+            name=name,
+            code=code,
+            category=category,
+            description=str(payload.get("description") or "").strip(),
+            paid_type=paid_type,
+            is_paid=is_paid,
+            gender_eligibility=genders,
+            employment_types=emp_types,
+            applicable_departments=payload.get("applicable_departments") or ["ALL"],
+            applicable_designations=payload.get("applicable_designations") or ["ALL"],
+            min_service_days=int(payload.get("min_service_days")) if payload.get("min_service_days") is not None else 0,
+            annual_quota=float(payload.get("annual_quota")) if payload.get("annual_quota") is not None else 0.0,
+            max_consecutive_days=int(payload.get("max_consecutive_days")) if payload.get("max_consecutive_days") is not None and str(payload.get("max_consecutive_days")).strip() != "" else None,
+            carry_forward_allowed=bool(payload.get("carry_forward_allowed")),
+            max_carry_forward_days=int(payload.get("max_carry_forward_days")) if payload.get("max_carry_forward_days") is not None else 0,
+            encashment_allowed=bool(payload.get("encashment_allowed")),
+            max_encashment_days=int(payload.get("max_encashment_days")) if payload.get("max_encashment_days") is not None else 0,
+            attachment_required=bool(payload.get("attachment_required")),
+            is_active=bool(payload.get("is_active", True)),
+        )
+        db.add(lt)
+        db.commit()
+        db.refresh(lt)
+        return {"message": f"Leave policy '{name}' created successfully", "id": lt.id}
+
+    @staticmethod
+    def update_leave_type(db: Session, leave_type_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Updates an existing leave policy configured by Gym Owner/Admin."""
+        lt = db.query(LeaveType).filter(LeaveType.id == leave_type_id).first()
+        if not lt:
+            raise ValueError("Leave type policy not found.")
+
+        if "name" in payload:
+            lt.name = str(payload["name"]).strip()
+        if "code" in payload:
+            lt.code = str(payload["code"]).strip().upper()
+        if "category" in payload:
+            lt.category = str(payload["category"]).strip()
+        if "description" in payload:
+            lt.description = str(payload["description"]).strip()
+        if "paid_type" in payload:
+            lt.paid_type = str(payload["paid_type"]).upper()
+            lt.is_paid = lt.paid_type != "UNPAID"
+        elif "is_paid" in payload:
+            lt.is_paid = bool(payload["is_paid"])
+            lt.paid_type = "PAID" if lt.is_paid else "UNPAID"
+        if "gender_eligibility" in payload:
+            genders = payload["gender_eligibility"]
+            if isinstance(genders, str):
+                genders = [g.strip().upper() for g in genders.split(",") if g.strip()]
+            lt.gender_eligibility = [g.upper() for g in genders]
+        if "employment_types" in payload:
+            emp_types = payload["employment_types"]
+            if isinstance(emp_types, str):
+                emp_types = [e.strip().upper() for e in emp_types.split(",") if e.strip()]
+            lt.employment_types = [e.upper() for e in emp_types]
+        if "applicable_departments" in payload:
+            lt.applicable_departments = payload["applicable_departments"]
+        if "applicable_designations" in payload:
+            lt.applicable_designations = payload["applicable_designations"]
+        if "min_service_days" in payload:
+            lt.min_service_days = int(payload["min_service_days"])
+        if "annual_quota" in payload:
+            lt.annual_quota = float(payload["annual_quota"])
+        if "max_consecutive_days" in payload:
+            val = payload["max_consecutive_days"]
+            lt.max_consecutive_days = int(val) if val is not None and str(val).strip() != "" else None
+        if "carry_forward_allowed" in payload:
+            lt.carry_forward_allowed = bool(payload["carry_forward_allowed"])
+        if "max_carry_forward_days" in payload:
+            lt.max_carry_forward_days = int(payload["max_carry_forward_days"])
+        if "encashment_allowed" in payload:
+            lt.encashment_allowed = bool(payload["encashment_allowed"])
+        if "max_encashment_days" in payload:
+            lt.max_encashment_days = int(payload["max_encashment_days"])
+        if "attachment_required" in payload:
+            lt.attachment_required = bool(payload["attachment_required"])
+        if "is_active" in payload:
+            lt.is_active = bool(payload["is_active"])
+
+        lt.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(lt)
+        return {"message": f"Leave policy '{lt.name}' updated successfully", "id": lt.id}
+
+    @staticmethod
+    def delete_leave_type(db: Session, leave_type_id: str) -> bool:
+        """Deletes a leave policy."""
+        lt = db.query(LeaveType).filter(LeaveType.id == leave_type_id).first()
+        if not lt:
+            return False
+        db.query(EmployeeLeaveBalance).filter(EmployeeLeaveBalance.leave_type_id == leave_type_id).delete()
+        db.delete(lt)
+        db.commit()
+        return True
+
+    @staticmethod
+    def get_eligible_leave_types_for_employee(db: Session, employee_id: str) -> Dict[str, Any]:
+        """
+        Dynamically calculates and filters leave eligibility for a specific employee/trainer.
+        Applies Gender, Employment Type, Minimum Service Days, and Department rules.
+        Calculates real-time allocated, used, pending, and remaining balances per eligible leave.
+        """
+        emp_id = str(employee_id or "").strip()
+        emp = db.query(Employee).filter((Employee.id == emp_id) | (Employee.code == emp_id) | (Employee.email.ilike(emp_id))).first()
+        trainer = None
+        if not emp:
+            clean_id = emp_id.replace("emp_", "")
+            trainer = db.query(TrainerProfile).filter(
+                (TrainerProfile.id == emp_id) | (TrainerProfile.id == clean_id) | (TrainerProfile.email.ilike(emp_id))
+            ).first()
+            if trainer:
+                emp = db.query(Employee).filter(Employee.id == f"emp_{trainer.id}").first()
+
+        emp_gender = "MALE"
+        emp_name = "Employee"
+        emp_dept = "General"
+        emp_emp_type = "FULL_TIME"
+        joined_d = date.today()
+
+        if emp:
+            emp_gender = (emp.gender or "MALE").strip().upper()
+            emp_name = f"{emp.first_name} {emp.last_name or ''}".strip()
+            emp_dept = emp.department or "General"
+            emp_emp_type = (emp.employment_type or "FULL_TIME").strip().upper().replace("-", "_").replace(" ", "_")
+            joined_d = emp.joined_date or date.today()
+        elif trainer:
+            emp_gender = (trainer.gender or "MALE").strip().upper()
+            emp_name = trainer.full_name or "Trainer"
+            emp_dept = trainer.primary_gym_location or "Fitness"
+            joined_d = trainer.created_at.date() if trainer.created_at else date.today()
+
+        service_days = max(0, (date.today() - joined_d).days)
+        current_year = date.today().year
+        year_start = date(current_year, 1, 1)
+        year_end = date(current_year, 12, 31)
+
+        # Query all active leave types
+        active_policies = db.query(LeaveType).filter(LeaveType.is_active == True).order_by(LeaveType.created_at.asc()).all()
+
+        # Query employee approved leaves this year
+        approved_leaves = db.query(LeaveRequest).filter(
+            LeaveRequest.employee_id == (emp.id if emp else employee_id),
+            LeaveRequest.status == "Approved",
+            LeaveRequest.start_date >= year_start,
+            LeaveRequest.start_date <= year_end
+        ).all()
+
+        # Query employee pending leaves this year
+        pending_leaves = db.query(LeaveRequest).filter(
+            LeaveRequest.employee_id == (emp.id if emp else employee_id),
+            LeaveRequest.status == "Pending",
+            LeaveRequest.start_date >= year_start,
+            LeaveRequest.start_date <= year_end
+        ).all()
+
+        # Custom balance overrides
+        balances = db.query(EmployeeLeaveBalance).filter(
+            EmployeeLeaveBalance.employee_id == (emp.id if emp else employee_id),
+            EmployeeLeaveBalance.year == current_year
+        ).all()
+        bal_map = {b.leave_type_id: b for b in balances}
+
+        eligible_types = []
+        ineligible_types = []
+
+        total_allocated = 0.0
+        total_used = 0.0
+        total_remaining = 0.0
+        total_pending = 0.0
+
+        for policy in active_policies:
+            # 1. Gender check
+            genders = [g.upper() for g in (policy.gender_eligibility or ["ALL"])]
+            is_gender_eligible = "ALL" in genders or emp_gender in genders
+
+            # 2. Service days check
+            is_service_eligible = service_days >= (policy.min_service_days or 0)
+
+            # 3. Employment type check
+            emp_types = [e.upper().replace("-", "_").replace(" ", "_") for e in (policy.employment_types or ["ALL"])]
+            is_emp_type_eligible = "ALL" in emp_types or emp_emp_type in emp_types
+
+            # 4. Department check
+            depts = [d.upper() for d in (policy.applicable_departments or ["ALL"])]
+            is_dept_eligible = "ALL" in depts or emp_dept.upper() in depts
+
+            is_eligible = is_gender_eligible and is_service_eligible and is_emp_type_eligible and is_dept_eligible
+
+            # Calculate days used for this leave type
+            used_days = sum(l.days for l in approved_leaves if (l.leave_type_id == policy.id or l.leave_type.lower() == policy.name.lower() or l.leave_type.lower() == policy.code.lower()))
+            pending_days = sum(l.days for l in pending_leaves if (l.leave_type_id == policy.id or l.leave_type.lower() == policy.name.lower() or l.leave_type.lower() == policy.code.lower()))
+
+            allocated_days = policy.annual_quota or 0.0
+            if policy.id in bal_map:
+                allocated_days = bal_map[policy.id].allocated_days
+
+            remaining_days = max(0.0, allocated_days - used_days)
+
+            item_data = {
+                "id": policy.id,
+                "name": policy.name,
+                "code": policy.code,
+                "category": policy.category or "General Leave",
+                "description": policy.description or "",
+                "paid_type": policy.paid_type or "PAID",
+                "is_paid": policy.is_paid,
+                "gender_eligibility": policy.gender_eligibility,
+                "min_service_days": policy.min_service_days or 0,
+                "annual_quota": allocated_days,
+                "allocated_days": allocated_days,
+                "used_days": used_days,
+                "pending_days": pending_days,
+                "remaining_days": remaining_days,
+                "max_consecutive_days": policy.max_consecutive_days,
+                "carry_forward_allowed": policy.carry_forward_allowed,
+                "max_carry_forward_days": policy.max_carry_forward_days or 0,
+                "encashment_allowed": policy.encashment_allowed,
+                "max_encashment_days": policy.max_encashment_days or 0,
+                "attachment_required": policy.attachment_required,
+                "is_eligible": is_eligible,
+                "ineligibility_reason": None
+            }
+
+            if is_eligible:
+                eligible_types.append(item_data)
+                total_allocated += allocated_days
+                total_used += used_days
+                total_remaining += remaining_days
+                total_pending += pending_days
+            else:
+                reasons = []
+                if not is_gender_eligible:
+                    reasons.append(f"Applicable to {', '.join(policy.gender_eligibility)} only (Employee is {emp_gender.capitalize()})")
+                if not is_service_eligible:
+                    reasons.append(f"Requires minimum {policy.min_service_days} service days (Employee has {service_days} days)")
+                if not is_emp_type_eligible:
+                    reasons.append(f"Applicable to {', '.join(policy.employment_types)} employment types")
+                item_data["ineligibility_reason"] = "; ".join(reasons)
+                ineligible_types.append(item_data)
+
+        return {
+            "employee_id": emp.id if emp else employee_id,
+            "employee_name": emp_name,
+            "gender": emp_gender,
+            "department": emp_dept,
+            "employment_type": emp_emp_type,
+            "service_days": service_days,
+            "summary": {
+                "total_allocated": total_allocated,
+                "total_used": total_used,
+                "total_remaining": total_remaining,
+                "total_pending": total_pending,
+            },
+            "eligible_leave_types": eligible_types,
+            "ineligible_leave_types": ineligible_types,
+        }
+
+    @staticmethod
     def get_leaves(db: Session, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns leave applications enriched with policy metadata, employee gender, and paid/unpaid tags."""
         query = db.query(LeaveRequest)
         if status and status.upper() != "ALL":
             query = query.filter(LeaveRequest.status.ilike(status))
@@ -841,40 +1173,59 @@ class HrmsService:
 
             emp_name = f"{emp.first_name} {emp.last_name or ''}".strip() if emp else (trainer.full_name if trainer else "")
             emp_code = emp.code if emp else (f"TR-{trainer.id.replace('tr_', '').upper()}" if trainer else "")
+            emp_gender = emp.gender if emp else (trainer.gender if trainer and trainer.gender else "Male")
             dept = emp.department if emp else (trainer.primary_gym_location if trainer and trainer.primary_gym_location else "")
             designation = emp.designation if emp else (trainer.role if trainer and trainer.role else "")
+
+            # Match leave policy for code / paid status
+            lt = None
+            if l.leave_type_id:
+                lt = db.query(LeaveType).filter(LeaveType.id == l.leave_type_id).first()
+            if not lt:
+                lt = db.query(LeaveType).filter((LeaveType.name.ilike(l.leave_type)) | (LeaveType.code.ilike(l.leave_type))).first()
+
+            paid_type = l.paid_type or (lt.paid_type if lt else "PAID")
+            is_paid = l.is_paid if l.is_paid is not None else (lt.is_paid if lt else True)
 
             result.append({
                 "id": l.id,
                 "employee_id": l.employee_id,
                 "employee_name": emp_name,
                 "employee_code": emp_code,
+                "employee_gender": emp_gender or "Male",
                 "department": dept or "",
                 "designation": designation or "",
-                "leave_type": l.leave_type or "",
+                "leave_type_id": l.leave_type_id or (lt.id if lt else ""),
+                "leave_type": l.leave_type or (lt.name if lt else ""),
+                "leave_type_code": lt.code if lt else "",
+                "paid_type": paid_type,
+                "is_paid": is_paid,
                 "start_date": l.start_date.strftime("%d/%m/%Y") if l.start_date else "",
                 "end_date": l.end_date.strftime("%d/%m/%Y") if l.end_date else "",
                 "raw_start_date": l.start_date.isoformat() if l.start_date else "",
                 "raw_end_date": l.end_date.isoformat() if l.end_date else "",
                 "days": l.days or 0,
                 "reason": l.reason or "",
-                "status": l.status or "",
+                "status": l.status or "Pending",
                 "approved_by": l.approved_by or "",
+                "rejection_reason": l.rejection_reason or "",
+                "attachment_url": l.attachment_url or "",
                 "applied_on": l.created_at.strftime("%d/%m/%Y") if l.created_at else ""
             })
         return result
 
     @staticmethod
     def apply_leave(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Applies for leave with dynamic policy validation & eligibility check."""
         emp_id = str(payload.get("employee_id") or "").strip()
         if not emp_id:
             raise ValueError("Employee / Trainer ID is required.")
 
         # Ensure employee exists or resolve trainer
-        emp = db.query(Employee).filter((Employee.id == emp_id) | (Employee.code == emp_id)).first()
+        emp = db.query(Employee).filter((Employee.id == emp_id) | (Employee.code == emp_id) | (Employee.email.ilike(emp_id))).first()
         if not emp:
             clean_tid = emp_id.replace("emp_", "")
-            trainer = db.query(TrainerProfile).filter((TrainerProfile.id == emp_id) | (TrainerProfile.id == clean_tid)).first()
+            trainer = db.query(TrainerProfile).filter((TrainerProfile.id == emp_id) | (TrainerProfile.id == clean_tid) | (TrainerProfile.email.ilike(emp_id))).first()
             if trainer:
                 emp_id = f"emp_{trainer.id}"
                 emp = db.query(Employee).filter(Employee.id == emp_id).first()
@@ -885,6 +1236,7 @@ class HrmsService:
                         first_name=trainer.full_name,
                         email=trainer.email,
                         phone=trainer.phone or "",
+                        gender=trainer.gender or "Male",
                         designation=trainer.role or trainer.specialization or "",
                         department=trainer.primary_gym_location or "",
                         status="Active",
@@ -905,30 +1257,120 @@ class HrmsService:
             raise ValueError("End date cannot be earlier than start date.")
 
         days = max(1, (end - start).days + 1)
+
+        leave_type_input = str(payload.get("leave_type") or payload.get("leave_type_id") or "").strip()
+        if not leave_type_input:
+            raise ValueError("Leave type is required.")
+
+        # Resolve leave policy
+        lt = db.query(LeaveType).filter(
+            (LeaveType.id == leave_type_input) |
+            (LeaveType.code.ilike(leave_type_input)) |
+            (LeaveType.name.ilike(leave_type_input))
+        ).first()
+
+        leave_type_name = lt.name if lt else leave_type_input
+        leave_type_id = lt.id if lt else None
+        paid_type = lt.paid_type if lt else ("PAID" if payload.get("is_paid", True) else "UNPAID")
+        is_paid = lt.is_paid if lt else (paid_type != "UNPAID")
+
+        # Policy validation if leave type found
+        if lt:
+            emp_gender = (emp.gender or "MALE").strip().upper() if emp else "MALE"
+            genders = [g.upper() for g in (lt.gender_eligibility or ["ALL"])]
+            if "ALL" not in genders and emp_gender not in genders:
+                raise ValueError(f"'{lt.name}' is only eligible for {', '.join(lt.gender_eligibility)}. Current employee is {emp_gender.capitalize()}.")
+
+            if lt.max_consecutive_days and days > lt.max_consecutive_days:
+                raise ValueError(f"Maximum consecutive days allowed for '{lt.name}' is {lt.max_consecutive_days} days (Requested {days} days).")
+
         leave = LeaveRequest(
             id=f"leave_{uuid.uuid4().hex[:8]}",
-            employee_id=emp_id,
-            leave_type=str(payload.get("leave_type") or "").strip(),
+            employee_id=emp.id if emp else emp_id,
+            leave_type_id=leave_type_id,
+            leave_type=leave_type_name,
+            paid_type=paid_type,
+            is_paid=is_paid,
             start_date=start,
             end_date=end,
             days=days,
             reason=str(payload.get("reason") or "").strip(),
+            attachment_url=str(payload.get("attachment_url") or "").strip(),
             status="Pending"
         )
         db.add(leave)
         db.commit()
+        db.refresh(leave)
         return {"message": "Leave application submitted successfully", "id": leave.id}
 
     @staticmethod
-    def update_leave_status(db: Session, leave_id: str, status: str, reviewer: Optional[str] = None) -> Dict[str, Any]:
+    def update_leave_status(db: Session, leave_id: str, status: str, reviewer: Optional[str] = None, rejection_reason: Optional[str] = None) -> Dict[str, Any]:
+        """Approves, rejects, or cancels a leave request."""
         leave = db.query(LeaveRequest).filter(LeaveRequest.id == leave_id).first()
         if not leave:
             raise ValueError("Leave request not found")
         leave.status = status
         if reviewer:
             leave.approved_by = reviewer
+        if rejection_reason:
+            leave.rejection_reason = rejection_reason
         db.commit()
         return {"message": f"Leave request status updated to {status}"}
+
+    @staticmethod
+    def get_leave_balances_matrix(db: Session, year: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Returns the complete leave balance matrix for all active employees across all leave types."""
+        current_year = int(year) if year else date.today().year
+        employees = db.query(Employee).filter(Employee.status == "Active").order_by(Employee.first_name.asc()).all()
+        leave_types = db.query(LeaveType).filter(LeaveType.is_active == True).order_by(LeaveType.created_at.asc()).all()
+
+        matrix = []
+        for emp in employees:
+            eligibility_info = HrmsService.get_eligible_leave_types_for_employee(db, emp.id)
+            matrix.append({
+                "employee_id": emp.id,
+                "employee_code": emp.code,
+                "employee_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+                "gender": emp.gender or "Male",
+                "department": emp.department,
+                "designation": emp.designation,
+                "employment_type": emp.employment_type,
+                "service_days": eligibility_info.get("service_days", 0),
+                "summary": eligibility_info.get("summary", {}),
+                "balances": eligibility_info.get("eligible_leave_types", []),
+            })
+        return matrix
+
+    @staticmethod
+    def adjust_leave_balance(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Manually adjusts or overrides leave balance for an employee."""
+        emp_id = str(payload.get("employee_id") or "").strip()
+        lt_id = str(payload.get("leave_type_id") or "").strip()
+        allocated_days = float(payload.get("allocated_days", 0.0))
+        year = int(payload.get("year", date.today().year))
+
+        bal = db.query(EmployeeLeaveBalance).filter(
+            EmployeeLeaveBalance.employee_id == emp_id,
+            EmployeeLeaveBalance.leave_type_id == lt_id,
+            EmployeeLeaveBalance.year == year
+        ).first()
+
+        if bal:
+            bal.allocated_days = allocated_days
+            bal.updated_at = datetime.utcnow()
+        else:
+            bal = EmployeeLeaveBalance(
+                id=f"bal_{uuid.uuid4().hex[:8]}",
+                employee_id=emp_id,
+                leave_type_id=lt_id,
+                year=year,
+                allocated_days=allocated_days,
+                used_days=0.0,
+                pending_days=0.0
+            )
+            db.add(bal)
+        db.commit()
+        return {"message": "Leave balance adjusted successfully"}
 
     # -------------------------------------------------------------
     # 5. PAYROLL METHODS & DYNAMIC CALCULATION ENGINE

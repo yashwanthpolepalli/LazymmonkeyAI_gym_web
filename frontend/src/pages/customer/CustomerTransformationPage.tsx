@@ -385,9 +385,9 @@ export function CustomerTransformationPage() {
               <button
                 type="button"
                 onClick={() => handleGenderChange('Male')}
-                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   gender === 'Male'
-                    ? 'bg-navy-900 text-white shadow-sm ring-1 ring-brand-500/20'
+                    ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/20'
                     : 'text-navy-600 hover:text-navy-900 hover:bg-white/60'
                 }`}
               >
@@ -396,9 +396,9 @@ export function CustomerTransformationPage() {
               <button
                 type="button"
                 onClick={() => handleGenderChange('Female')}
-                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   gender === 'Female'
-                    ? 'bg-navy-900 text-white shadow-sm ring-1 ring-brand-500/20'
+                    ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/20'
                     : 'text-navy-600 hover:text-navy-900 hover:bg-white/60'
                 }`}
               >

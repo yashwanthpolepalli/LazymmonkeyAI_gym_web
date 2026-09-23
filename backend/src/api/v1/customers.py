@@ -1,15 +1,29 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.schemas.customer import CustomerResponse, CustomerCreate
 from src.services.customer_service import CustomerService
+from src.api.deps import get_current_user
+from src.models.user import User
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
 @router.get("")
-def get_customers(db: Session = Depends(get_db)):
-    return CustomerService.get_all_customers(db)
+def get_customers(
+    branch: Optional[str] = Query(None),
+    branch_id: Optional[str] = Query(None),
+    owner_id: Optional[str] = Query(None),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return CustomerService.get_all_customers(
+        db,
+        current_user=current_user,
+        branch=branch,
+        branch_id=branch_id,
+        owner_id=owner_id
+    )
 
 @router.get("/slot-bookings")
 def get_customer_slot_bookings(
@@ -29,13 +43,42 @@ def get_customer(customer_id: str, db: Session = Depends(get_db)):
     return cust
 
 @router.post("/onboard")
-def onboard_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
-    return CustomerService.onboard_customer(db, payload.model_dump())
+def onboard_customer(
+    payload: CustomerCreate,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    data = payload.model_dump()
+    if current_user:
+        u_role = (current_user.role or "").strip().upper()
+        if u_role in ["GYM_OWNER", "OWNER"]:
+            data["owner_id"] = data.get("owner_id") or current_user.id
+            if not data.get("branch_id") and current_user.branch_id:
+                data["branch_id"] = current_user.branch_id
+        elif u_role in ["MANAGER", "STAFF", "TRAINER"]:
+            data["owner_id"] = data.get("owner_id") or current_user.owner_id
+            data["branch_id"] = data.get("branch_id") or current_user.branch_id
+    return CustomerService.onboard_customer(db, data)
 
 @router.put("/{customer_id}")
 def update_customer(customer_id: str, payload: dict, db: Session = Depends(get_db)):
     try:
         return CustomerService.update_customer(db, customer_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.patch("/{customer_id}")
+def patch_customer(customer_id: str, payload: dict, db: Session = Depends(get_db)):
+    try:
+        return CustomerService.update_customer(db, customer_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.patch("/{customer_id}/workout-video-access")
+def toggle_workout_video_access(customer_id: str, payload: dict, db: Session = Depends(get_db)):
+    enable = payload.get("enable_workout_videos") if "enable_workout_videos" in payload else payload.get("enable", True)
+    try:
+        return CustomerService.toggle_workout_video_access(db, customer_id, bool(enable))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -58,8 +101,20 @@ def delete_customer(customer_id: str, db: Session = Depends(get_db)):
 members_router = APIRouter(prefix="/members", tags=["Members"])
 
 @members_router.get("")
-def get_all_members(db: Session = Depends(get_db)):
-    return CustomerService.get_all_customers(db)
+def get_all_members(
+    branch: Optional[str] = Query(None),
+    branch_id: Optional[str] = Query(None),
+    owner_id: Optional[str] = Query(None),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return CustomerService.get_all_customers(
+        db,
+        current_user=current_user,
+        branch=branch,
+        branch_id=branch_id,
+        owner_id=owner_id
+    )
 
 @members_router.get("/{member_id}")
 def get_member_by_id(member_id: str, db: Session = Depends(get_db)):

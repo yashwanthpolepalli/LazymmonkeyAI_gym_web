@@ -49,12 +49,14 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
     else:
         expire = now_ist_naive() + datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    secret = settings.SECRET_KEY or "fitclub-super-secret-jwt-key-32-chars-minimum-token"
+    encoded_jwt = jwt.encode(to_encode, secret, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 def verify_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        secret = settings.SECRET_KEY or "fitclub-super-secret-jwt-key-32-chars-minimum-token"
+        payload = jwt.decode(token, secret, algorithms=[settings.ALGORITHM])
         return payload
     except jwt.PyJWTError:
         return None

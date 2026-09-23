@@ -26,7 +26,9 @@ import { IotPage } from '@/pages/owner/IotPage';
 import { ReportsPage } from '@/pages/owner/ReportsPage';
 import { MultiBranchPage } from '@/pages/owner/MultiBranchPage';
 import { SettingsPage } from '@/pages/owner/SettingsPage';
+import { ErpPage } from '@/pages/owner/ErpPage';
 import { TrainerDashboard } from '@/pages/trainer/TrainerDashboard';
+
 import { TodaysWorkoutsPage } from '@/pages/trainer/TodaysWorkoutsPage';
 import { ProgressPage } from '@/pages/trainer/ProgressPage';
 import { TrainerAttendancePage } from '@/pages/trainer/TrainerAttendancePage';
@@ -42,7 +44,6 @@ import { CustomerTransformationPage } from '@/pages/customer/CustomerTransformat
 import { CustomerAttendancePage } from '@/pages/customer/CustomerAttendancePage';
 import { SuperAdminDashboard } from '@/pages/superadmin/SuperAdminDashboard';
 import { GymsPage } from '@/pages/superadmin/GymsPage';
-import { GlobalUsersPage } from '@/pages/superadmin/GlobalUsersPage';
 import { SaaSPlansPage } from '@/pages/superadmin/SaaSPlansPage';
 import { FeatureControlsPage } from '@/pages/superadmin/FeatureControlsPage';
 import { DevicesPage } from '@/pages/superadmin/DevicesPage';
@@ -50,6 +51,7 @@ import { AiEnginePage } from '@/pages/superadmin/AiEnginePage';
 import { AuditLogsPage } from '@/pages/superadmin/AuditLogsPage';
 import { SupportDeskPage } from '@/pages/superadmin/SupportDeskPage';
 import { PrivacyPolicyPage } from '@/pages/PrivacyPolicyPage';
+import { DownloadPage } from '@/pages/DownloadPage';
 import type { Role } from '@/types';
 import { roleHomePath } from '@/config/navigation';
 
@@ -70,6 +72,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/download" element={<DownloadPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/owner" element={<ProtectedRoute><RoleRedirect allowed={['owner']} /></ProtectedRoute>}>
         <Route index element={<OwnerDashboard />} />
@@ -93,8 +96,14 @@ function AppRoutes() {
         <Route path="biometrics" element={<Navigate to="/owner/iot?tab=biometrics" replace />} />
         <Route path="reports" element={<Navigate to="/owner/settings?tab=reports" replace />} />
         <Route path="multi-branch" element={<MultiBranchPage />} />
+        <Route path="erp" element={<ErpPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
+
+      <Route path="/erp" element={<ProtectedRoute><RoleRedirect allowed={['owner', 'super_admin']} /></ProtectedRoute>}>
+        <Route index element={<ErpPage />} />
+      </Route>
+
 
       <Route path="/trainer" element={<ProtectedRoute><RoleRedirect allowed={['trainer']} /></ProtectedRoute>}>
         <Route index element={<TrainerDashboard />} />
@@ -124,7 +133,6 @@ function AppRoutes() {
       <Route path="/super-admin" element={<ProtectedRoute><RoleRedirect allowed={['super_admin']} /></ProtectedRoute>}>
         <Route index element={<SuperAdminDashboard />} />
         <Route path="gyms" element={<GymsPage />} />
-        <Route path="users" element={<GlobalUsersPage />} />
         <Route path="plans" element={<SaaSPlansPage />} />
         <Route path="features" element={<FeatureControlsPage />} />
         <Route path="ai-engine" element={<AiEnginePage />} />

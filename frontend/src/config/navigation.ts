@@ -10,7 +10,6 @@ export const navConfig: Record<Role, NavItem[]> = {
   super_admin: [
     { label: 'Overview', path: '/super-admin', icon: 'layout-dashboard' },
     { label: 'Organizations', path: '/super-admin/gyms', icon: 'building-2' },
-    { label: 'Global Users', path: '/super-admin/users', icon: 'users' },
     { label: 'SaaS Plans', path: '/super-admin/plans', icon: 'credit-card' },
     { label: 'Feature Controls', path: '/super-admin/features', icon: 'toggle-left' },
     { label: 'AI Platform', path: '/super-admin/ai-engine', icon: 'sparkles' },
@@ -31,8 +30,10 @@ export const navConfig: Record<Role, NavItem[]> = {
     { label: 'Payments', path: '/owner/payments', icon: 'indian-rupee' },
     { label: 'IoT Devices', path: '/owner/iot', icon: 'cpu' },
     { label: 'Multi-Branch', path: '/owner/multi-branch', icon: 'git-branch' },
+    { label: 'ERP & Google Reviews', path: '/owner/erp', icon: 'building-2' },
     { label: 'Settings', path: '/owner/settings', icon: 'settings' },
   ],
+
   trainer: [
     { label: 'Dashboard', path: '/trainer', icon: 'layout-dashboard' },
     { label: 'My Customers', path: '/trainer/customers', icon: 'users' },

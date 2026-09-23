@@ -21,6 +21,9 @@ interface AuditLogItem {
 
 const actionStyles: Record<string, { variant: 'brand' | 'success' | 'warning' | 'danger' | 'purple'; icon: string }> = {
   ONBOARD_ORGANIZATION: { variant: 'success', icon: 'building-2' },
+  ONBOARD_OWNER_CREDENTIALS: { variant: 'success', icon: 'key' },
+  RESET_OWNER_CREDENTIALS: { variant: 'warning', icon: 'key' },
+  CHANGE_OWNER_STATUS: { variant: 'danger', icon: 'shield-alert' },
   CHANGE_ORGANIZATION_STATUS: { variant: 'warning', icon: 'shield-alert' },
   CHANGE_PLAN: { variant: 'purple', icon: 'credit-card' },
   UPDATE_FEATURE_FLAGS: { variant: 'brand', icon: 'toggle-left' },

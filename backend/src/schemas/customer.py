@@ -13,6 +13,8 @@ class CustomerBase(BaseModel):
     goal: Optional[str] = None
     profile_image: Optional[str] = None
     status: Optional[str] = None
+    owner_id: Optional[str] = None
+    branch_id: Optional[str] = None
 
 class CustomerCreate(CustomerBase):
     role: Optional[str] = "CUSTOMER"
@@ -26,11 +28,17 @@ class CustomerCreate(CustomerBase):
     start_date: Optional[str] = None
     expiry_date: Optional[str] = None
     is_face_enrolled: Optional[bool] = None
+    paid_amount: Optional[float] = None
+    due_amount: Optional[float] = None
+    invoice_number: Optional[str] = None
+    transaction_id: Optional[str] = None
 
 class CustomerResponse(CustomerBase):
     id: str
     user_id: str
     trainer_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    branch_id: Optional[str] = None
     created_at: datetime
 
     class Config:

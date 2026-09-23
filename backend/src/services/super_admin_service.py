@@ -122,12 +122,129 @@ class SuperAdminService:
     # 2. ORGANIZATIONS / GYMS DIRECTORY & INSPECTOR
     # =========================================================================
     @staticmethod
+    def ensure_default_saas_plans(db: Session):
+        """Auto-seed standard SaaS tiers if none exist in the database."""
+        if db.query(SaaSPlan).count() == 0:
+            default_plans = [
+                SaaSPlan(
+                    id=str(uuid.uuid4()),
+                    name="Starter Launch",
+                    code="starter",
+                    description="Essential single-branch management for boutique gyms & fitness studios.",
+                    price_monthly=2999.0,
+                    price_annual=29990.0,
+                    max_branches=1,
+                    max_members=250,
+                    max_trainers=3,
+                    ai_credits_monthly=500,
+                    storage_gb=5.0,
+                    features=[
+                        "Member Management & Digital Registration",
+                        "QR Code Attendance & Pass Scanning",
+                        "Basic Invoicing & Receipt Generator",
+                        "FIT CLUB Member Mobile / Web App"
+                    ],
+                    is_active=True,
+                    is_popular=False,
+                ),
+                SaaSPlan(
+                    id=str(uuid.uuid4()),
+                    name="Pro Growth",
+                    code="pro",
+                    description="Advanced AI-driven fitness coaching, InBody scan OCR, and inventory stock tracking.",
+                    price_monthly=5999.0,
+                    price_annual=59990.0,
+                    max_branches=2,
+                    max_members=750,
+                    max_trainers=10,
+                    ai_credits_monthly=2500,
+                    storage_gb=20.0,
+                    features=[
+                        "All Starter Features Included",
+                        "AI Coach Workout & Diet Builder",
+                        "InBody Diagnostic Sheet Vision OCR",
+                        "Inventory & Supplement Stock Tracking",
+                        "Automated WhatsApp CRM Alerts & Reminders"
+                    ],
+                    is_active=True,
+                    is_popular=True,
+                ),
+                SaaSPlan(
+                    id=str(uuid.uuid4()),
+                    name="Business Scale",
+                    code="business",
+                    description="High-volume multi-tier gym management with PineLabs POS and Biometric Turnstiles.",
+                    price_monthly=11999.0,
+                    price_annual=119990.0,
+                    max_branches=5,
+                    max_members=2500,
+                    max_trainers=25,
+                    ai_credits_monthly=7500,
+                    storage_gb=50.0,
+                    features=[
+                        "All Pro Features Included",
+                        "PineLabs POS Terminal & EDC Swiper",
+                        "Biometric Turnstile IoT Gate Unlatch",
+                        "Automated SMS & WhatsApp Marketing Engine",
+                        "Trainer Commission & Payroll Splitter"
+                    ],
+                    is_active=True,
+                    is_popular=False,
+                ),
+                SaaSPlan(
+                    id=str(uuid.uuid4()),
+                    name="Enterprise Prime",
+                    code="enterprise",
+                    description="Full enterprise chain management with CCTV face attendance and multi-location HQ.",
+                    price_monthly=24999.0,
+                    price_annual=249990.0,
+                    max_branches=99,
+                    max_members=10000,
+                    max_trainers=100,
+                    ai_credits_monthly=25000,
+                    storage_gb=200.0,
+                    features=[
+                        "All Business Features Included",
+                        "Multi-Branch Consolidated HQ Reporting",
+                        "CCTV Facial Attendance Live Stream",
+                        "Dedicated 24/7 SLA & Integration Architect",
+                        "Custom Hardware & Turnstile Protocol Bridge"
+                    ],
+                    is_active=True,
+                    is_popular=False,
+                )
+            ]
+            for p in default_plans:
+                db.add(p)
+            db.commit()
+
+    @staticmethod
+    def ensure_default_feature_controls(db: Session):
+        """Auto-seed default feature matrix if empty in PostgreSQL."""
+        if db.query(FeatureControl).count() == 0:
+            default_features = [
+                FeatureControl(id=str(uuid.uuid4()), feature_name="AI Coach & Diet / Workout Builder", starter=False, pro=True, business=True, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="InBody Scan Sheet Vision OCR", starter=False, pro=True, business=True, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="POS & PineLabs Payment Terminals", starter=False, pro=False, business=True, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="Turnstile / Biometric IoT Gates", starter=False, pro=False, business=True, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="Inventory & Supplement Stock Tracking", starter=False, pro=True, business=True, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="Automated WhatsApp / SMS CRM Reminders", starter=False, pro=True, business=True, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="Multi-Branch Centralized HQ Operations", starter=False, pro=False, business=False, enterprise=True),
+                FeatureControl(id=str(uuid.uuid4()), feature_name="CCTV Facial Attendance Live Stream", starter=False, pro=False, business=False, enterprise=True),
+            ]
+            for f in default_features:
+                db.add(f)
+            db.commit()
+
+    @staticmethod
     def get_organizations(
         db: Session,
         status_filter: Optional[str] = None,
         plan_filter: Optional[str] = None,
         search: Optional[str] = None
     ) -> List[Dict[str, Any]]:
+        SuperAdminService.ensure_default_saas_plans(db)
+        SuperAdminService.ensure_default_feature_controls(db)
         query = db.query(GymBranch)
         if search:
             query = query.filter(or_(
@@ -146,9 +263,47 @@ class SuperAdminService:
 
         res = []
         for b in branches:
-            member_count = db.query(Customer).count()
-            trainer_count = db.query(User).filter(User.role == "TRAINER").count()
-            rev_sum = db.query(func.sum(Membership.paid_amount)).scalar() or 0.0
+            owner = None
+            if b.owner_id:
+                owner = db.query(User).filter(User.id == b.owner_id).first()
+            if not owner:
+                owner = db.query(User).filter(User.branch_id == b.id, User.role == "GYM_OWNER").first()
+
+            # Dynamic member count for this branch
+            member_count = db.query(Customer).filter(
+                or_(
+                    Customer.branch_id == b.id,
+                    Customer.owner_id == b.owner_id,
+                    Customer.primary_gym_location.ilike(f"%{b.branch_name}%")
+                )
+            ).count()
+
+            # Dynamic trainer count for this branch
+            trainer_count = db.query(User).filter(
+                User.role == "TRAINER",
+                or_(
+                    User.branch_id == b.id,
+                    User.owner_id == b.owner_id
+                )
+            ).count()
+
+            # Dynamic revenue for this branch's members
+            branch_cust_ids = [
+                c.id for c in db.query(Customer.id).filter(
+                    or_(
+                        Customer.branch_id == b.id,
+                        Customer.owner_id == b.owner_id,
+                        Customer.primary_gym_location.ilike(f"%{b.branch_name}%")
+                    )
+                ).all()
+            ]
+
+            rev_sum = 0.0
+            if branch_cust_ids:
+                rev_sum = db.query(func.sum(Membership.paid_amount)).filter(
+                    Membership.customer_id.in_(branch_cust_ids)
+                ).scalar() or 0.0
+
             ai_credits = db.query(func.sum(AiJobLog.credits_consumed)).filter(
                 or_(AiJobLog.organization_id == b.id, AiJobLog.organization_name == b.gym_name)
             ).scalar() or 0
@@ -160,13 +315,20 @@ class SuperAdminService:
                 "branch_name": b.branch_name or "",
                 "city": b.city or "",
                 "address": b.address or "",
-                "owner_name": first_owner.full_name if first_owner else "",
-                "owner_email": first_owner.email if first_owner else "",
-                "phone": first_owner.phone if first_owner else "",
+                "owner_id": owner.id if owner else b.owner_id,
+                "owner_name": owner.full_name if owner else "",
+                "owner_email": owner.email if owner else "",
+                "phone": owner.phone if owner else "",
                 "members": member_count,
                 "trainers": trainer_count,
                 "revenue": float(rev_sum),
-                "plan": "Standard",
+                "plan_id": getattr(b, "plan_id", None),
+                "plan": getattr(b, "plan_name", None) or "Pro Growth",
+                "plan_tier": getattr(b, "plan_tier", None) or "pro",
+                "billing_cycle": getattr(b, "billing_cycle", None) or "monthly",
+                "payment_method": getattr(b, "payment_method", None) or "Cash",
+                "paid_amount": float(getattr(b, "paid_amount", 0.0) or 0.0),
+                "custom_features": getattr(b, "custom_features", None) or [],
                 "status": "Active" if b.is_active else "Suspended",
                 "is_active": b.is_active,
                 "health_score": 100 if b.is_active else 0,
@@ -183,14 +345,50 @@ class SuperAdminService:
         if not branch:
             return None
 
-        owners = db.query(User).filter(User.role == "GYM_OWNER").all()
-        owner = owners[0] if owners else None
+        owner = None
+        if branch.owner_id:
+            owner = db.query(User).filter(User.id == branch.owner_id).first()
+        if not owner:
+            owner = db.query(User).filter(User.branch_id == branch.id, User.role == "GYM_OWNER").first()
 
-        member_count = db.query(Customer).count()
-        active_members = db.query(Customer).filter(Customer.status == "ACTIVE").count()
-        trainer_count = db.query(User).filter(User.role == "TRAINER").count()
-        rev_sum = db.query(func.sum(Membership.paid_amount)).scalar() or 0.0
-        mrr_sum = db.query(func.sum(Membership.price)).filter(Membership.status == "ACTIVE").scalar() or 0.0
+        branch_cust_ids = [
+            c.id for c in db.query(Customer.id).filter(
+                or_(
+                    Customer.branch_id == branch.id,
+                    Customer.owner_id == branch.owner_id,
+                    Customer.primary_gym_location.ilike(f"%{branch.branch_name}%")
+                )
+            ).all()
+        ]
+
+        member_count = len(branch_cust_ids)
+        active_members = (
+            db.query(Customer).filter(
+                Customer.id.in_(branch_cust_ids),
+                Customer.status == "ACTIVE"
+            ).count()
+            if branch_cust_ids else 0
+        )
+
+        trainer_count = db.query(User).filter(
+            User.role == "TRAINER",
+            or_(
+                User.branch_id == branch.id,
+                User.owner_id == branch.owner_id
+            )
+        ).count()
+
+        rev_sum = 0.0
+        mrr_sum = 0.0
+        if branch_cust_ids:
+            rev_sum = db.query(func.sum(Membership.paid_amount)).filter(
+                Membership.customer_id.in_(branch_cust_ids)
+            ).scalar() or 0.0
+            mrr_sum = db.query(func.sum(Membership.price)).filter(
+                Membership.customer_id.in_(branch_cust_ids),
+                Membership.status == "ACTIVE"
+            ).scalar() or 0.0
+
         ai_credits = db.query(func.sum(AiJobLog.credits_consumed)).filter(
             or_(AiJobLog.organization_id == org_id, AiJobLog.organization_name == branch.gym_name)
         ).scalar() or 0
@@ -260,48 +458,214 @@ class SuperAdminService:
         city = payload.get("city", "").strip() or "Hyderabad"
         address = payload.get("address", "").strip()
         owner_name = payload.get("owner_name", "").strip()
-        owner_email = payload.get("owner_email", "").strip()
+        owner_email = payload.get("owner_email", "").strip().lower()
+        phone = payload.get("phone", "").strip()
         password = payload.get("password", "").strip() or "Pass@123"
 
+        # Plan & Billing Parameters
+        plan_id = payload.get("plan_id")
+        plan_name = payload.get("plan_name", "").strip() or "Pro Growth"
+        plan_tier = payload.get("plan_tier", "").strip().lower() or "pro"
+        billing_cycle = payload.get("billing_cycle", "").strip().lower() or "monthly"
+        payment_method = payload.get("payment_method", "").strip() or "Cash"
+        paid_amount = float(payload.get("paid_amount", payload.get("grand_total", 0.0)) or 0.0)
+        custom_features = payload.get("custom_features", [])
+
+        if not gym_name:
+            return {"success": False, "message": "Gym name is required"}
+        if not owner_email:
+            return {"success": False, "message": "Owner email is required"}
+        if not owner_name:
+            owner_name = "Gym Owner"
+
+        # Check existing user
+        existing_user = db.query(User).filter(func.lower(User.email) == owner_email).first()
+        if existing_user and existing_user.role != "GYM_OWNER":
+            return {"success": False, "message": f"Email {owner_email} already belongs to an existing user with role '{existing_user.role}'"}
+
+        branch_id = f"gym_{uuid.uuid4().hex[:10]}"
         branch = GymBranch(
-            id=str(uuid.uuid4()),
+            id=branch_id,
             gym_name=gym_name,
             branch_name=branch_name,
             city=city,
             address=address,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            plan_tier=plan_tier,
+            billing_cycle=billing_cycle,
+            payment_method=payment_method,
+            paid_amount=paid_amount,
+            custom_features=custom_features,
             is_active=True
         )
         db.add(branch)
 
-        # Create or link owner User
-        existing_user = db.query(User).filter(User.email == owner_email).first()
-        if not existing_user and owner_email:
+        # Create or update GYM_OWNER user
+        if not existing_user:
+            user_id = f"usr_owner_{uuid.uuid4().hex[:10]}"
             new_user = User(
-                id=str(uuid.uuid4()),
+                id=user_id,
                 email=owner_email,
                 password_hash=hash_password(password),
                 full_name=owner_name,
+                phone=phone,
                 role="GYM_OWNER",
+                branch_id=branch_id,
                 is_active=True,
                 is_tenant_owner=True
             )
             db.add(new_user)
+            owner_user = new_user
+        else:
+            existing_user.role = "GYM_OWNER"
+            existing_user.full_name = owner_name
+            if phone:
+                existing_user.phone = phone
+            existing_user.password_hash = hash_password(password)
+            existing_user.branch_id = branch_id
+            existing_user.is_active = True
+            existing_user.is_tenant_owner = True
+            owner_user = existing_user
 
-        # Audit log event
+        branch.owner_id = owner_user.id
+
+        # Comprehensive Audit log event with billing breakdown
         log = PlatformAuditLog(
-            actor_name=actor_info.get("name") if actor_info else "",
-            actor_email=actor_info.get("email") if actor_info else "",
+            id=f"audit_{uuid.uuid4().hex[:12]}",
+            actor_name=actor_info.get("name") if actor_info else "Super Admin",
+            actor_email=actor_info.get("email") if actor_info else "superadmin@fitclub.com",
             organization_id=branch.id,
             organization_name=gym_name,
-            action="ONBOARD_ORGANIZATION",
-            resource_type="organization",
-            resource_id=branch.id,
-            new_value={"gym_name": gym_name, "owner": owner_name, "email": owner_email}
+            action="ONBOARD_OWNER_CREDENTIALS",
+            resource_type="owner_credentials",
+            resource_id=owner_user.id,
+            new_value={
+                "gym_id": branch.id,
+                "gym_name": gym_name,
+                "branch_name": branch_name,
+                "city": city,
+                "owner_id": owner_user.id,
+                "owner_name": owner_name,
+                "owner_email": owner_email,
+                "phone": phone,
+                "plan_id": plan_id,
+                "plan_name": plan_name,
+                "plan_tier": plan_tier,
+                "billing_cycle": billing_cycle,
+                "payment_method": payment_method,
+                "paid_amount": paid_amount,
+                "discount_percent": payload.get("discount_percent", 0),
+                "discount_amount": payload.get("discount_amount", 0),
+                "tax_mode": payload.get("tax_mode", "CGST_SGST"),
+                "tax_amount": payload.get("tax_amount", 0),
+                "additional_charges": payload.get("additional_charges", 0),
+                "custom_features": custom_features,
+                "status": "ACTIVE",
+                "role": "GYM_OWNER"
+            }
         )
         db.add(log)
         db.commit()
         db.refresh(branch)
-        return {"success": True, "gym_id": branch.id, "message": f"Successfully onboarded {gym_name}"}
+        db.refresh(owner_user)
+
+        return {
+            "success": True,
+            "gym_id": branch.id,
+            "gym_name": gym_name,
+            "branch_name": branch_name,
+            "city": city,
+            "owner_id": owner_user.id,
+            "owner_name": owner_name,
+            "owner_email": owner_email,
+            "phone": phone,
+            "plan_id": plan_id,
+            "plan_name": plan_name,
+            "plan_tier": plan_tier,
+            "billing_cycle": billing_cycle,
+            "payment_method": payment_method,
+            "paid_amount": paid_amount,
+            "custom_features": custom_features,
+            "temporary_password": password,
+            "message": f"Successfully onboarded {owner_name} ({gym_name}) with {plan_name} plan!"
+        }
+
+    @staticmethod
+    def reset_owner_credentials(db: Session, user_id: str, new_password: str, actor_info: Optional[dict] = None) -> Dict[str, Any]:
+        user = db.query(User).filter(or_(User.id == user_id, func.lower(User.email) == user_id.strip().lower())).first()
+        if not user:
+            return {"success": False, "message": "Owner account not found"}
+
+        if not new_password or len(new_password.strip()) < 6:
+            return {"success": False, "message": "Password must be at least 6 characters long"}
+
+        clean_pwd = new_password.strip()
+        user.password_hash = hash_password(clean_pwd)
+        user.updated_at = now_ist_naive()
+
+        # Audit log event
+        log = PlatformAuditLog(
+            id=f"audit_{uuid.uuid4().hex[:12]}",
+            actor_name=actor_info.get("name") if actor_info else "Super Admin",
+            actor_email=actor_info.get("email") if actor_info else "superadmin@fitclub.com",
+            organization_id="PLATFORM",
+            organization_name="Fit Club Platform",
+            action="RESET_OWNER_CREDENTIALS",
+            resource_type="owner_credentials",
+            resource_id=user.id,
+            new_value={
+                "owner_id": user.id,
+                "owner_name": user.full_name,
+                "owner_email": user.email,
+                "action": "Admin Credential Reset",
+                "timestamp": now_ist_naive().isoformat()
+            }
+        )
+        db.add(log)
+        db.commit()
+
+        return {
+            "success": True,
+            "user_id": user.id,
+            "owner_name": user.full_name,
+            "owner_email": user.email,
+            "new_password": clean_pwd,
+            "message": f"Credentials successfully reset for {user.full_name} ({user.email})"
+        }
+
+    @staticmethod
+    def update_owner_status(db: Session, user_id: str, is_active: bool, actor_info: Optional[dict] = None) -> Dict[str, Any]:
+        user = db.query(User).filter(or_(User.id == user_id, func.lower(User.email) == user_id.strip().lower())).first()
+        if not user:
+            return {"success": False, "message": "Owner account not found"}
+
+        old_status = "Active" if user.is_active else "Suspended"
+        user.is_active = is_active
+        user.updated_at = now_ist_naive()
+
+        # Audit log event
+        log = PlatformAuditLog(
+            id=f"audit_{uuid.uuid4().hex[:12]}",
+            actor_name=actor_info.get("name") if actor_info else "Super Admin",
+            actor_email=actor_info.get("email") if actor_info else "superadmin@fitclub.com",
+            organization_id="PLATFORM",
+            organization_name="Fit Club Platform",
+            action="CHANGE_OWNER_STATUS",
+            resource_type="owner_credentials",
+            resource_id=user.id,
+            old_value={"status": old_status},
+            new_value={"status": "Active" if is_active else "Suspended", "is_active": is_active}
+        )
+        db.add(log)
+        db.commit()
+
+        return {
+            "success": True,
+            "user_id": user.id,
+            "is_active": is_active,
+            "message": f"Owner account {user.email} status updated to {'Active' if is_active else 'Suspended'}"
+        }
 
     @staticmethod
     def update_gym_status(db: Session, gym_id: str, status: str, actor_info: Optional[dict] = None) -> Dict[str, Any]:
@@ -376,6 +740,7 @@ class SuperAdminService:
     # =========================================================================
     @staticmethod
     def get_plans(db: Session) -> List[Dict[str, Any]]:
+        SuperAdminService.ensure_default_saas_plans(db)
         plans = db.query(SaaSPlan).order_by(SaaSPlan.price_monthly).all()
         return [
             {
@@ -437,11 +802,11 @@ class SuperAdminService:
         count = db.query(AiModelRouting).count()
         if count == 0:
             default_routings = [
-                AiModelRouting(capability="vision_ocr", provider="Google", model_id="gemini-2.5-flash", status="operational", avg_latency_sec=0.8, cost_per_1k_tokens=0.0001),
+                AiModelRouting(capability="vision_ocr", provider="Google", model_id="gemini-3.6-flash", status="operational", avg_latency_sec=0.8, cost_per_1k_tokens=0.0001),
                 AiModelRouting(capability="food_scanner", provider="OpenAI", model_id="gpt-4o", status="operational", avg_latency_sec=1.1, cost_per_1k_tokens=0.0025),
                 AiModelRouting(capability="ai_coach", provider="Anthropic", model_id="claude-3-5-sonnet", status="operational", avg_latency_sec=0.9, cost_per_1k_tokens=0.003),
                 AiModelRouting(capability="brochure_generator", provider="Black Forest Labs", model_id="flux-1-pro", status="operational", avg_latency_sec=2.4, cost_per_1k_tokens=0.04),
-                AiModelRouting(capability="workout_progression", provider="Google", model_id="gemini-2.5-flash", status="operational", avg_latency_sec=0.5, cost_per_1k_tokens=0.0001),
+                AiModelRouting(capability="workout_progression", provider="Google", model_id="gemini-3.6-flash", status="operational", avg_latency_sec=0.5, cost_per_1k_tokens=0.0001),
             ]
             for r in default_routings:
                 db.add(r)
@@ -449,7 +814,7 @@ class SuperAdminService:
             # Also seed recent realistic telemetry job logs
             initial_jobs = [
                 AiJobLog(job_number="JOB-9041", organization_name="FitClub Flagship", task_type="Food Scanner Vision", provider="OpenAI", model_name="gpt-4o", status="completed", duration_seconds=1.12, credits_consumed=2, tokens_used=840, created_at=now_ist_naive()),
-                AiJobLog(job_number="JOB-9042", organization_name="FitClub Indiranagar", task_type="InBody Sheet OCR", provider="Google", model_name="gemini-2.5-flash", status="completed", duration_seconds=0.78, credits_consumed=1, tokens_used=420, created_at=now_ist_naive()),
+                AiJobLog(job_number="JOB-9042", organization_name="FitClub Indiranagar", task_type="InBody Sheet OCR", provider="Google", model_name="gemini-3.6-flash", status="completed", duration_seconds=0.78, credits_consumed=1, tokens_used=420, created_at=now_ist_naive()),
                 AiJobLog(job_number="JOB-9043", organization_name="FitClub Koramangala", task_type="AI Coach Workout Plan", provider="Anthropic", model_name="claude-3-5-sonnet", status="completed", duration_seconds=0.94, credits_consumed=3, tokens_used=1250, created_at=now_ist_naive()),
                 AiJobLog(job_number="JOB-9044", organization_name="FitClub Flagship", task_type="Flyer AI Generator", provider="Black Forest Labs", model_name="flux-1-pro", status="completed", duration_seconds=2.31, credits_consumed=5, tokens_used=2400, created_at=now_ist_naive()),
             ]
@@ -843,18 +1208,17 @@ class SuperAdminService:
     # =========================================================================
     @staticmethod
     def get_feature_controls(db: Session) -> Dict[str, Any]:
+        SuperAdminService.ensure_default_feature_controls(db)
         features = db.query(FeatureControl).all()
-        return {
-            "features": [
-                {
-                    "id": f.id,
-                    "name": f.feature_name,
-                    "is_enabled": f.is_enabled,
-                    "plan_tier": f.plan_tier or "ALL"
-                }
-                for f in features
-            ]
-        }
+        matrix = {}
+        for f in features:
+            matrix[f.feature_name] = {
+                "Starter": bool(f.starter),
+                "Pro": bool(f.pro),
+                "Business": bool(f.business),
+                "Enterprise": bool(f.enterprise)
+            }
+        return matrix
 
     # =========================================================================
     # 10. PLATFORM SETTINGS
@@ -885,20 +1249,38 @@ class SuperAdminService:
 
     @staticmethod
     def save_feature_controls(db: Session, payload: dict) -> Dict[str, Any]:
-        features_data = payload.get("features", [])
-        for f in features_data:
-            fid = f.get("id")
-            rec = db.query(FeatureControl).filter(FeatureControl.id == fid).first() if fid else None
-            if rec:
-                rec.is_enabled = f.get("is_enabled", True)
-                rec.plan_tier = f.get("plan_tier", "ALL")
+        if isinstance(payload, dict):
+            if "features" in payload and isinstance(payload["features"], list):
+                for f in payload["features"]:
+                    fid = f.get("id")
+                    rec = db.query(FeatureControl).filter(FeatureControl.id == fid).first() if fid else None
+                    if not rec and f.get("name"):
+                        rec = db.query(FeatureControl).filter(FeatureControl.feature_name == f.get("name")).first()
+                    if rec:
+                        rec.starter = f.get("starter", rec.starter)
+                        rec.pro = f.get("pro", rec.pro)
+                        rec.business = f.get("business", rec.business)
+                        rec.enterprise = f.get("enterprise", rec.enterprise)
             else:
-                db.add(FeatureControl(
-                    feature_name=f.get("name", ""),
-                    is_enabled=f.get("is_enabled", True),
-                    plan_tier=f.get("plan_tier", "ALL")
-                ))
-        db.commit()
+                for feature_name, tier_flags in payload.items():
+                    if isinstance(tier_flags, dict):
+                        rec = db.query(FeatureControl).filter(FeatureControl.feature_name == feature_name).first()
+                        if not rec:
+                            rec = FeatureControl(
+                                id=str(uuid.uuid4()),
+                                feature_name=feature_name,
+                                starter=tier_flags.get("Starter", False),
+                                pro=tier_flags.get("Pro", False),
+                                business=tier_flags.get("Business", True),
+                                enterprise=tier_flags.get("Enterprise", True)
+                            )
+                            db.add(rec)
+                        else:
+                            rec.starter = bool(tier_flags.get("Starter", False))
+                            rec.pro = bool(tier_flags.get("Pro", False))
+                            rec.business = bool(tier_flags.get("Business", True))
+                            rec.enterprise = bool(tier_flags.get("Enterprise", True))
+            db.commit()
         return {"success": True, "message": "Feature controls updated successfully"}
 
     @staticmethod
@@ -978,7 +1360,58 @@ class SuperAdminService:
         return {"success": True, "plan_id": plan.id, "message": f"SaaS Plan '{plan.name}' created"}
 
     @staticmethod
+    def update_saas_plan(db: Session, plan_id: str, payload: dict) -> Dict[str, Any]:
+        plan = db.query(SaaSPlan).filter(or_(SaaSPlan.id == plan_id, SaaSPlan.code == plan_id.lower())).first()
+        if not plan:
+            return {"success": False, "message": "SaaS Plan not found"}
+
+        if "name" in payload and payload["name"]:
+            plan.name = payload["name"].strip()
+        if "code" in payload and payload["code"]:
+            plan.code = payload["code"].strip().lower()
+        if "description" in payload:
+            plan.description = payload["description"].strip() if payload["description"] else None
+        if "price_monthly" in payload:
+            plan.price_monthly = float(payload["price_monthly"]) if payload["price_monthly"] is not None and str(payload["price_monthly"]).strip() != "" else None
+        if "price_annual" in payload:
+            plan.price_annual = float(payload["price_annual"]) if payload["price_annual"] is not None and str(payload["price_annual"]).strip() != "" else None
+        if "max_branches" in payload:
+            plan.max_branches = int(payload["max_branches"]) if payload["max_branches"] is not None and str(payload["max_branches"]).strip() != "" else None
+        if "max_members" in payload:
+            plan.max_members = int(payload["max_members"]) if payload["max_members"] is not None and str(payload["max_members"]).strip() != "" else None
+        if "max_trainers" in payload:
+            plan.max_trainers = int(payload["max_trainers"]) if payload["max_trainers"] is not None and str(payload["max_trainers"]).strip() != "" else None
+        if "ai_credits_monthly" in payload:
+            plan.ai_credits_monthly = int(payload["ai_credits_monthly"]) if payload["ai_credits_monthly"] is not None and str(payload["ai_credits_monthly"]).strip() != "" else None
+        if "storage_gb" in payload:
+            plan.storage_gb = float(payload["storage_gb"]) if payload["storage_gb"] is not None and str(payload["storage_gb"]).strip() != "" else None
+        if "features" in payload:
+            if isinstance(payload["features"], list):
+                plan.features = payload["features"]
+            else:
+                plan.features = [s.strip() for s in str(payload["features"]).split(",") if s.strip()]
+        if "is_active" in payload:
+            plan.is_active = bool(payload["is_active"])
+        if "is_popular" in payload:
+            plan.is_popular = bool(payload["is_popular"])
+
+        plan.updated_at = now_ist_naive()
+        db.commit()
+        db.refresh(plan)
+        return {"success": True, "plan_id": plan.id, "message": f"SaaS Plan '{plan.name}' updated successfully"}
+
+    @staticmethod
+    def delete_saas_plan(db: Session, plan_id: str) -> Dict[str, Any]:
+        plan = db.query(SaaSPlan).filter(or_(SaaSPlan.id == plan_id, SaaSPlan.code == plan_id.lower())).first()
+        if not plan:
+            return {"success": False, "message": "SaaS Plan not found"}
+        db.delete(plan)
+        db.commit()
+        return {"success": True, "message": "SaaS Plan removed"}
+
+    @staticmethod
     def save_nutrition_policy(db: Session, payload: dict) -> Dict[str, Any]:
         return {"success": True, "message": "Nutrition policy updated"}
+
 
 

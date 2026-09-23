@@ -1,6 +1,6 @@
 from src.utils.timezone import now_ist_naive
 import datetime
-from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from src.database.base import Base
 
@@ -10,6 +10,8 @@ class Customer(Base):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
     trainer_id = Column(String, ForeignKey("users.id"), nullable=True)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    branch_id = Column(String, ForeignKey("gym_branches.id"), nullable=True, index=True)
     full_name = Column(String, nullable=False)
     phone = Column(String, nullable=False)
     email = Column(String, nullable=False)
@@ -42,6 +44,7 @@ class Customer(Base):
     profile_image = Column(String, nullable=True)
     status = Column(String, default="ACTIVE")
     primary_gym_location = Column(String, nullable=True)
+    enable_workout_videos = Column(Boolean, default=True) # Gym Owner video access control
     created_at = Column(DateTime, default=now_ist_naive)
     updated_at = Column(DateTime, default=now_ist_naive, onupdate=now_ist_naive)
 

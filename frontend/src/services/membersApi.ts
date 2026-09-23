@@ -50,6 +50,7 @@ export const membersApi = {
         bodyFat: Number(item.bodyFat) || 0,
         goal: item.goal || '',
         trainer: item.trainer || '',
+        enable_workout_videos: item.enable_workout_videos !== undefined ? Boolean(item.enable_workout_videos) : true,
       };
     });
   },
@@ -78,12 +79,31 @@ export const membersApi = {
         bodyFat: Number(item.bodyFat) || 0,
         goal: item.goal || '',
         trainer: item.trainer || '',
+        enable_workout_videos: item.enable_workout_videos !== undefined ? Boolean(item.enable_workout_videos) : true,
       };
     } catch (_err) {
       return null;
     }
   },
-  create: async (data: Partial<Member> & { role?: string; plan_price?: number; payment_method?: string; start_date?: string; expiry_date?: string; branch?: string; primary_gym_location?: string }): Promise<any> => {
+  toggleWorkoutVideoAccess: async (id: string, enable: boolean): Promise<any> => {
+    return apiClient.patch(`/customers/${id}/workout-video-access`, { enable_workout_videos: enable });
+  },
+  update: async (id: string, data: any): Promise<any> => {
+    return apiClient.patch(`/customers/${id}`, data);
+  },
+  create: async (data: Partial<Member> & {
+    role?: string;
+    plan_price?: number;
+    payment_method?: string;
+    paid_amount?: number;
+    due_amount?: number;
+    invoice_number?: string;
+    transaction_id?: string;
+    start_date?: string;
+    expiry_date?: string;
+    branch?: string;
+    primary_gym_location?: string;
+  }): Promise<any> => {
     return apiClient.post('/customers/onboard', {
       full_name: data.name,
       email: data.email,
@@ -96,9 +116,14 @@ export const membersApi = {
       primary_gym_location: data.primary_gym_location || data.branch,
       membership_plan: data.membership,
       plan_price: data.plan_price,
-      payment_method: data.payment_method || 'Online',
+      payment_method: data.payment_method || 'Cash',
+      paid_amount: data.paid_amount,
+      due_amount: data.due_amount,
+      invoice_number: data.invoice_number,
+      transaction_id: data.transaction_id,
       start_date: data.start_date,
       expiry_date: data.expiry_date,
+      enable_workout_videos: data.enable_workout_videos !== undefined ? data.enable_workout_videos : true,
     });
   },
 };
