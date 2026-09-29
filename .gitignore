@@ -50,6 +50,7 @@ frontend/.env
 *.sln
 # Repositories & Local Folders
 backend_repo/
+gym_mobile_app/
 backend/data/images/
 backend/whatsapp_gateway/.wwebjs_auth/
 backend/whatsapp_gateway/.wwebjs_cache/

@@ -279,6 +279,37 @@ class NotificationService:
         ]
 
     @staticmethod
+    def create_live_alert(db: Session, data: Dict[str, Any]) -> Dict[str, Any]:
+        live_id = f"notif_{uuid.uuid4().hex[:8]}"
+        title = data.get("title") or "🔥 New Landing Page Lead Alert"
+        body = data.get("body") or f"New lead submission received."
+        category = data.get("category", "lead")
+        
+        live = LiveNotification(
+            id=live_id,
+            title=title,
+            body=body,
+            category=category,
+            unread=True,
+            created_at=now_ist_naive()
+        )
+        db.add(live)
+        db.commit()
+        db.refresh(live)
+        return {
+            "success": True,
+            "message": "Live alert created successfully for Super Admin.",
+            "notification": {
+                "id": live.id,
+                "title": live.title,
+                "body": live.body,
+                "category": live.category,
+                "unread": True,
+                "created_at": live.created_at.isoformat() if live.created_at else None
+            }
+        }
+
+    @staticmethod
     def register_device_token(db: Session, data: Dict[str, Any]) -> Dict[str, Any]:
         token = data.get("device_token")
         if not token:

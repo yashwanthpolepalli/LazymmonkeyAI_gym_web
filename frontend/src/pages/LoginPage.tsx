@@ -74,13 +74,13 @@ export function LoginPage() {
           
           {/* Top Brand Header */}
           <div className="flex items-center justify-between">
-            <Logo />
+            <Logo size="lg" />
             <button
               type="button"
               onClick={() => navigate('/download')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200/80 shadow-xs transition"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200/80 shadow-xs transition"
             >
-              <Icon name="download" size={13} className="text-blue-600" />
+              <Icon name="download" size={14} className="text-blue-600" />
               <span>Download Desktop App</span>
             </button>
           </div>

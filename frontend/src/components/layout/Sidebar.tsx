@@ -50,8 +50,8 @@ export function Sidebar({ collapsed, mobileOpen, onClose }: SidebarProps) {
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        <div className="h-16 flex items-center justify-between px-4 border-b border-navy-200/60 shrink-0">
-          {collapsed ? <Logo collapsed /> : <Logo />}
+        <div className="h-16 flex items-center justify-between px-3 border-b border-navy-200/60 shrink-0">
+          {collapsed ? <Logo collapsed size="sm" /> : <Logo size="sm" />}
           <button onClick={onClose} className="lg:hidden p-1.5 rounded-lg hover:bg-navy-100">
             <Icon name="x" size={20} className="text-navy-500" />
           </button>

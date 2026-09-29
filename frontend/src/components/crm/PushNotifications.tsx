@@ -698,11 +698,11 @@ export function PushNotifications() {
                 {/* Notification Card on Phone */}
                 <div className="p-3.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 space-y-2">
                   <div className="flex items-center justify-between text-[11px]">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-4 h-4 rounded-md bg-purple-600 flex items-center justify-center text-[9px] font-bold">
-                        B
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-white shrink-0 shadow-md border border-white/20 p-0.5">
+                        <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                       </div>
-                      <span className="font-bold text-slate-200">BusinessOS AI</span>
+                      <span className="font-black text-slate-100 text-sm tracking-tight">LazyMonkey FIT CLUB AI</span>
                     </div>
                     <span className="text-slate-400 text-[10px]">Just now</span>
                   </div>

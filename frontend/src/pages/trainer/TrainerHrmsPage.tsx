@@ -270,6 +270,7 @@ export function TrainerHrmsPage() {
           {/* Trainer Geofenced Punch Center */}
           <TrainerGeofencePunchWidget onPunchSuccess={fetchTrainerData} />
 
+
           {/* KPI Row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white rounded-2xl p-5 border border-navy-100 shadow-sm">

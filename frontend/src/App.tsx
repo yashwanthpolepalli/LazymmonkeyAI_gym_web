@@ -52,6 +52,7 @@ import { AuditLogsPage } from '@/pages/superadmin/AuditLogsPage';
 import { SupportDeskPage } from '@/pages/superadmin/SupportDeskPage';
 import { PrivacyPolicyPage } from '@/pages/PrivacyPolicyPage';
 import { DownloadPage } from '@/pages/DownloadPage';
+import { LandingPage } from '@/pages/LandingPage';
 import type { Role } from '@/types';
 import { roleHomePath } from '@/config/navigation';
 
@@ -71,6 +72,9 @@ function RoleRedirect({ allowed }: { allowed: Role[] }) {
 function AppRoutes() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/home" element={<LandingPage />} />
+      <Route path="/landing" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/download" element={<DownloadPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />

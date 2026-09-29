@@ -6,6 +6,8 @@ import { Logo } from './Logo';
 import { useAuth } from '@/context/AuthContext';
 import { getNavItems } from '@/config/navigation';
 import { cn } from '@/utils/cn';
+import { playNotificationBeep, getStoredLeads, LiveLeadNotification } from '@/utils/audioAlert';
+import { apiClient } from '@/services/apiClient';
 
 export function Topbar() {
   const { user, logout } = useAuth();
@@ -13,6 +15,8 @@ export function Topbar() {
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
   const [items, setItems] = useState(() => (user ? getNavItems(user.role) : []));
+  const [liveLeads, setLiveLeads] = useState<LiveLeadNotification[]>(() => getStoredLeads());
+  const [toastAlert, setToastAlert] = useState<LiveLeadNotification | null>(null);
 
   useEffect(() => {
     const updateItems = () => {
@@ -27,6 +31,68 @@ export function Topbar() {
     };
   }, [user]);
 
+  // Real-time Lead Notification & Audio Beep Listener for Super Admin / Gym Owners
+  useEffect(() => {
+    const handleNewLeadEvent = (e: any) => {
+      const lead = e.detail as LiveLeadNotification;
+      if (lead) {
+        setLiveLeads((prev) => [lead, ...prev.filter((l) => l.id !== lead.id)].slice(0, 30));
+        setToastAlert(lead);
+        playNotificationBeep('alert');
+        setTimeout(() => {
+          setToastAlert((curr) => (curr?.id === lead.id ? null : curr));
+        }, 8000);
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'FITCLUB_LATEST_LEAD_PING' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.lead) {
+            setLiveLeads((prev) => [parsed.lead, ...prev.filter((l) => l.id !== parsed.lead.id)].slice(0, 30));
+            setToastAlert(parsed.lead);
+            playNotificationBeep('alert');
+            setTimeout(() => {
+              setToastAlert((curr) => (curr?.id === parsed.lead.id ? null : curr));
+            }, 8000);
+          }
+        } catch (err) {}
+      }
+    };
+
+    // Polling fallback from backend API for live notifications
+    const pollBackendLive = async () => {
+      try {
+        const live = await apiClient.get<any[]>('/system/notifications/live').catch(() => []);
+        if (Array.isArray(live) && live.length > 0) {
+          const leadsFromDb: LiveLeadNotification[] = live.map((n: any) => ({
+            id: n.id,
+            name: n.title,
+            phone: n.body,
+            timestamp: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+            read: !n.unread,
+          }));
+          setLiveLeads((prev) => {
+            const merged = [...leadsFromDb, ...prev];
+            const unique = Array.from(new Map(merged.map((item) => [item.id, item])).values());
+            return unique.slice(0, 30);
+          });
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('fitclub:new_lead', handleNewLeadEvent);
+    window.addEventListener('storage', handleStorageChange);
+    const pollInterval = setInterval(pollBackendLive, 15000);
+
+    return () => {
+      window.removeEventListener('fitclub:new_lead', handleNewLeadEvent);
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(pollInterval);
+    };
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -36,13 +102,49 @@ export function Topbar() {
     ? user.role.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     : 'Owner';
 
+  const unreadLeadCount = liveLeads.filter((l) => !l.read).length;
+  const totalNotifBadge = 12 + unreadLeadCount;
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-slate-200/80 shadow-xs">
+      {/* Real-time Super Admin Sound Alert Toast */}
+      {toastAlert && (
+        <div className="fixed top-4 right-4 z-50 max-w-md w-full bg-slate-950 text-white rounded-3xl p-4 shadow-2xl border-2 border-orange-500 animate-in slide-in-from-top-4 duration-300 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-orange-600 text-white flex items-center justify-center font-black shrink-0 animate-pulse shadow-lg shadow-orange-500/40">
+              🔔
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30">
+                  🔥 NEW LEAD ALERT
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold">{toastAlert.timestamp}</span>
+              </div>
+              <p className="text-sm font-black text-white">{toastAlert.name}</p>
+              <p className="text-xs font-semibold text-slate-300">
+                Gym: <strong>{toastAlert.gymName || 'Gym Lead'}</strong> • Plan: <span className="text-orange-400">{toastAlert.plan || 'Free Trial'}</span>
+              </p>
+              <p className="text-xs text-slate-400 flex items-center gap-2 pt-0.5">
+                <span>📞 {toastAlert.phone}</span>
+                {toastAlert.notes && <span className="text-slate-500">({toastAlert.notes})</span>}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setToastAlert(null)}
+            className="p-1 rounded-xl text-slate-400 hover:text-white transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Header Row */}
       <div className="h-16 flex items-center justify-between px-2.5 sm:px-3.5 lg:px-4 gap-4 border-b border-slate-100">
         {/* Left: Brand Logo & Gym Location Selector */}
         <div className="flex items-center gap-4 min-w-0">
-          <Logo />
+          <Logo size="sm" />
 
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 hover:bg-slate-100 cursor-pointer transition-colors">
             <Icon name="map-pin" size={14} className="text-purple-600" />
@@ -86,16 +188,46 @@ export function Topbar() {
               className="relative p-2 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors"
             >
               <Icon name="bell" size={19} />
-              <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
-                12
+              <span className="absolute top-1 right-1 px-1 min-w-[18px] h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
+                {totalNotifBadge}
               </span>
             </button>
             {showNotifs && (
-              <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl p-4 space-y-3 animate-slide-up z-50 shadow-xl border border-slate-100">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-slate-900 uppercase">Notifications</span>
-                  <Badge variant="brand">12 new</Badge>
+              <div className="absolute right-0 top-12 w-88 bg-white rounded-3xl p-4 space-y-3 animate-slide-up z-50 shadow-2xl border border-slate-100 max-h-[500px] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-xs font-extrabold text-slate-900 uppercase">Notifications & Live Leads</span>
+                  <Badge variant="brand">{totalNotifBadge} total</Badge>
                 </div>
+
+                {/* Real-time incoming leads stream */}
+                {liveLeads.length > 0 && (
+                  <div className="space-y-1.5 pb-2 border-b border-slate-100">
+                    <span className="text-[10px] font-black text-orange-600 uppercase tracking-wider">
+                      🔥 Landing Page Leads ({liveLeads.length})
+                    </span>
+                    {liveLeads.slice(0, 5).map((lead) => (
+                      <div
+                        key={lead.id}
+                        className="p-2.5 rounded-2xl bg-orange-50/70 border border-orange-200/80 space-y-1"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-extrabold text-slate-900">{lead.name}</span>
+                          <span className="text-[10px] text-orange-700 font-bold">{lead.timestamp}</span>
+                        </div>
+                        <p className="text-[11px] font-bold text-slate-700">
+                          {lead.gymName || 'Gym Lead'} • <span className="text-orange-600">{lead.plan || 'Free Trial'}</span>
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                          <span>📞 {lead.phone}</span>
+                          <a href={`tel:${lead.phone}`} className="text-emerald-600 font-bold hover:underline">
+                            Call Now
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {[
                   {
                     icon: 'alert-triangle',

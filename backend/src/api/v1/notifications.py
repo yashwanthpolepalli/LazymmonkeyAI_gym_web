@@ -48,6 +48,10 @@ def send_broadcast_push(payload: dict = Body(...), db: Session = Depends(get_db)
 def get_live_notifications(db: Session = Depends(get_db)):
     return NotificationService.get_live_notifications(db)
 
+@router.post("/live-alert")
+def create_live_alert(payload: dict = Body(...), db: Session = Depends(get_db)):
+    return NotificationService.create_live_alert(db, payload)
+
 # ── Device Tokens ──
 @router.post("/devices/register")
 def register_device(payload: dict = Body(...), db: Session = Depends(get_db)):
