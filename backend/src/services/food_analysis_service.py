@@ -92,10 +92,20 @@ class FoodAnalysisService:
             # ── STAGE 1: GEMINI VISION RECOGNITION ──────────────────────────
             genai.configure(api_key=api_key)
             # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
-            fallback_models = build_gemini_fallback_list()
+            # Strip data URI header if present (e.g. data:image/jpeg;base64,...)
+            clean_b64 = image_base64
+            mime_type = "image/jpeg"
+            if "," in clean_b64 and ("data:" in clean_b64[:30] or ";base64" in clean_b64[:30]):
+                header, clean_b64 = clean_b64.split(",", 1)
+                if "png" in header:
+                    mime_type = "image/png"
+                elif "webp" in header:
+                    mime_type = "image/webp"
+                elif "gif" in header:
+                    mime_type = "image/gif"
 
-            image_bytes = base64.b64decode(image_base64)
-            image_part = {"mime_type": "image/jpeg", "data": image_bytes}
+            image_bytes = base64.b64decode(clean_b64)
+            image_part = {"mime_type": mime_type, "data": image_bytes}
 
             response = None
             last_exception = None
@@ -116,7 +126,7 @@ class FoodAnalysisService:
                 except Exception as ge:
                     last_exception = ge
                     err_str = str(ge)
-                    if "429" in err_str or "Quota" in err_str or "ResourceExhausted" in err_str or "404" in err_str or "not available" in err_str:
+                    if "429" in err_str or "Quota" in err_str or "ResourceExhausted" in err_str or "404" in err_str or "not available" in err_str or "503" in err_str or "UNAVAILABLE" in err_str:
                         continue
                     raise ge
 
