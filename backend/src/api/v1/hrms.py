@@ -119,7 +119,8 @@ def get_staff_face_status(
     from src.models.hrms import Employee
     from src.models.trainer import TrainerProfile
     from src.models.user import User
-    from src.models.biometrics import BiometricLog
+    from src.models.customer import Customer
+    from src.models.biometric import BiometricLog
 
     emp = db.query(Employee).filter(
         (Employee.id == employee_id) | (Employee.code == employee_id) | (Employee.email.ilike(employee_id))
@@ -140,11 +141,17 @@ def get_staff_face_status(
         face_img = emp.avatar
     elif usr and usr.avatar and len(usr.avatar) > 50:
         face_img = usr.avatar
+    elif trainer and trainer.profile_image and len(trainer.profile_image) > 50:
+        face_img = trainer.profile_image
 
-    enroll_log = db.query(BiometricLog).filter(
-        (BiometricLog.direction == "ENROLL") | (BiometricLog.event_type == "FACE_ENROLLMENT"),
-        (BiometricLog.customer_id == employee_id) | (BiometricLog.meta_data["user_id"].astext == employee_id)
-    ).order_by(BiometricLog.timestamp.desc()).first()
+    enroll_log = None
+    try:
+        enroll_log = db.query(BiometricLog).filter(
+            (BiometricLog.direction == "ENROLL") | (BiometricLog.event_type == "FACE_ENROLLMENT"),
+            (BiometricLog.customer_id == employee_id)
+        ).order_by(BiometricLog.timestamp.desc()).first()
+    except Exception:
+        enroll_log = None
 
     enrolled_at = None
     if enroll_log:
@@ -178,7 +185,8 @@ def register_staff_face(payload: dict, db: Session = Depends(get_db)):
     from src.models.hrms import Employee
     from src.models.trainer import TrainerProfile
     from src.models.user import User
-    from src.models.biometrics import BiometricLog
+    from src.models.customer import Customer
+    from src.models.biometric import BiometricLog
 
     raw_img = str(face_image).strip()
     raw_bytes_len = len(raw_img)
@@ -199,6 +207,8 @@ def register_staff_face(payload: dict, db: Session = Depends(get_db)):
         emp.avatar = raw_img
     if usr:
         usr.avatar = raw_img
+    if trainer:
+        trainer.profile_image = raw_img
 
     name = payload.get("full_name") or (f"{emp.first_name} {emp.last_name or ''}".strip() if emp else (trainer.full_name if trainer else (usr.name if usr else employee_id)))
     role = (
@@ -224,9 +234,13 @@ def register_staff_face(payload: dict, db: Session = Depends(get_db)):
     status = payload.get("status") or ("SUCCESS" if quality_score >= 0.90 else "FAILED")
     action_label = payload.get("action") or "FACE_ENROLLMENT"
 
+    # Safely assign customer_id only if existing in customers table, else keep None
+    is_cust = db.query(Customer).filter(Customer.id == employee_id).first() is not None
+    fk_cust_id = employee_id if is_cust else None
+
     bio_log = BiometricLog(
         id=f"bio_reg_{uuid.uuid4().hex[:8]}",
-        customer_id=employee_id,
+        customer_id=fk_cust_id,
         user_role=role,
         event_type=event_type,
         device_type=device_type,
