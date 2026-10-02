@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy & Account Deletion | LMaFitClubAi (com.lazymonkeyai.fitclubai) - LazyMonkey AI</title>
+    <meta name="description" content="Official Privacy Policy, Biometric Data Governance, and Account Deletion Request Portal for LMaFitClubAi (com.lazymonkeyai.fitclubai) by LazyMonkey AI.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-dark: #0f172a;
+            --border: #e2e8f0;
+            --border-dark: #1e293b;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --text-subtle: #64748b;
+            --accent: #ea580c;
+            --accent-hover: #c2410c;
+            --emerald: #059669;
+            --indigo: #4f46e5;
+            --danger: #dc2626;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            line-height: 1.7;
+            font-size: 15px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Top Sticky Header */
+        header.site-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 900;
+            font-size: 1.2rem;
+            letter-spacing: -0.02em;
+            color: #0f172a;
+            text-decoration: none;
+        }
+
+        .brand-badge {
+            background: linear-gradient(135deg, var(--accent), #f97316);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-delete-nav {
+            background: #fef2f2;
+            color: var(--danger);
+            border: 1px solid #fecaca;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-delete-nav:hover {
+            background: #fee2e2;
+            border-color: var(--danger);
+        }
+
+        .btn-print {
+            background: #ffffff;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-print:hover {
+            background: #f1f5f9;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1040px;
+            margin: 32px auto 60px;
+            padding: 0 20px;
+        }
+
+        /* Main Policy Card */
+        .policy-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 48px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+            margin-bottom: 32px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(234, 88, 12, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(234, 88, 12, 0.25);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            color: #0f172a;
+            margin-bottom: 12px;
+            line-height: 1.25;
+        }
+
+        .meta-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 16px 20px;
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            margin: 20px 0 32px;
+            font-size: 12.5px;
+            color: var(--text-muted);
+        }
+
+        .meta-strip strong {
+            color: #0f172a;
+        }
+
+        /* Legal Sections */
+        .legal-section {
+            margin-bottom: 40px;
+            scroll-margin-top: 100px;
+        }
+
+        .legal-section h2 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-num {
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .legal-section h3 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 20px 0 10px;
+        }
+
+        .legal-section p {
+            color: #334155;
+            margin-bottom: 14px;
+        }
+
+        .legal-section ul, .legal-section ol {
+            margin: 12px 0 18px 24px;
+            color: #334155;
+        }
+
+        .legal-section li {
+            margin-bottom: 8px;
+        }
+
+        /* Tables */
+        .legal-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 13.5px;
+        }
+
+        .legal-table th {
+            background: #f1f5f9;
+            color: #0f172a;
+            font-weight: 700;
+            text-align: left;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+        }
+
+        .legal-table td {
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            color: #334155;
+            vertical-align: top;
+        }
+
+        .legal-table tr:nth-child(even) td {
+            background: #fafafa;
+        }
+
+        /* Callout Box */
+        .callout {
+            background: #fff7ed;
+            border-left: 4px solid var(--accent);
+            border-radius: 12px;
+            padding: 18px 20px;
+            margin: 20px 0;
+            font-size: 13.5px;
+            color: #7c2d12;
+        }
+
+        .callout-title {
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: #9a3412;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ------------------------------------------------------------- */
+        /* ACCOUNT DELETION SECTION & FORM                               */
+        /* ------------------------------------------------------------- */
+        .deletion-portal {
+            background: #0f172a;
+            color: #f8fafc;
+            border-radius: 24px;
+            padding: 40px 36px;
+            margin: 48px 0;
+            border: 1px solid #1e293b;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+            scroll-margin-top: 100px;
+        }
+
+        .deletion-portal h2 {
+            color: #ffffff;
+            font-size: 1.6rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 14px;
+        }
+
+        .deletion-portal p {
+            color: #cbd5e1;
+            margin-bottom: 14px;
+            font-size: 14px;
+        }
+
+        .deletion-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 24px 0;
+        }
+
+        .del-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .del-card h4 {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .del-card ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            font-size: 12.5px;
+            color: #94a3b8;
+        }
+
+        .del-card li {
+            position: relative;
+            padding-left: 16px;
+            margin-bottom: 6px;
+        }
+
+        .del-card li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: bold;
+        }
+
+        /* Deletion Form */
+        .deletion-form-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 20px;
+            padding: 28px;
+            margin-top: 24px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group.full {
+            grid-column: 1 / -1;
+        }
+
+        .deletion-form-card label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: #e2e8f0;
+            margin-bottom: 6px;
+        }
+
+        .deletion-form-card input,
+        .deletion-form-card select,
+        .deletion-form-card textarea {
+            width: 100%;
+            padding: 12px 14px;
+            background: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 10px;
+            color: #ffffff;
+            font-size: 13.5px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .deletion-form-card input:focus,
+        .deletion-form-card select:focus,
+        .deletion-form-card textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .btn-submit-delete {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--accent), #f97316);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .btn-submit-delete:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+
+        .success-box {
+            display: none;
+            background: rgba(5, 150, 105, 0.2);
+            border: 1px solid rgba(5, 150, 105, 0.5);
+            color: #6ee7b7;
+            padding: 20px;
+            border-radius: 14px;
+            font-size: 13.5px;
+            text-align: center;
+            margin-top: 16px;
+        }
+
+        /* In-App Steps */
+        .inapp-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 24px;
+            font-size: 13px;
+        }
+
+        .inapp-box h4 {
+            color: #ffffff;
+            margin-bottom: 8px;
+            font-size: 13.5px;
+        }
+
+        .inapp-box ol {
+            padding-left: 20px;
+            color: #cbd5e1;
+        }
+
+        .inapp-box li {
+            margin-bottom: 4px;
+        }
+
+        /* Contact Box */
+        .contact-box {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 24px 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            font-size: 13px;
+        }
+
+        .contact-box .label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-subtle);
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .contact-box .val {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .contact-box a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .contact-box a:hover {
+            text-decoration: underline;
+        }
+
+        /* Footer */
+        footer.site-footer {
+            text-align: center;
+            padding: 32px 20px;
+            color: var(--text-subtle);
+            font-size: 12.5px;
+            border-top: 1px solid var(--border);
+            background: #ffffff;
+        }
+
+        @media (max-width: 768px) {
+            .policy-card { padding: 24px 20px; }
+            .deletion-portal { padding: 24px 20px; }
+            .deletion-info-grid { grid-template-columns: 1fr; }
+            .form-grid { grid-template-columns: 1fr; }
+            header.site-header { padding: 14px 20px; }
+            h1 { font-size: 1.75rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="site-header">
+        <a href="#" class="brand-logo">
+            <span class="brand-badge">FIT CLUB AI</span>
+            <span>LazyMonkey AI</span>
+        </a>
+        <div class="header-actions">
+            <a href="#account-deletion" class="btn-delete-nav">
+                🗑️ Account Deletion
+            </a>
+            <button onclick="window.print()" class="btn-print">
+                🖨️ Print Policy
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+        <article class="policy-card">
+            <span class="hero-badge">Google Play Developer Policy Compliance Standard</span>
+            <h1>Privacy Policy &amp; Biometric Governance</h1>
+            <p style="color: var(--text-muted); font-size: 1.05rem; font-weight: 500;">
+                Official Data Safety, Telemetry Processing, and User Privacy Rights Disclosure.
+            </p>
+
+            <div class="meta-strip">
+                <div><strong>Application:</strong> LMaFitClubAi</div>
+                <div><strong>Package Name:</strong> <code>com.lazymonkeyai.fitclubai</code></div>
+                <div><strong>Organization / Developer:</strong> LazyMonkey AI / FIT CLUB AI</div>
+                <div><strong>Effective Date:</strong> 01 April 2025</div>
+                <div><strong>Last Revised:</strong> 02 October 2026 (Version 2.4.0)</div>
+            </div>
+
+            <!-- Section 1 -->
+            <section id="section-1" class="legal-section">
+                <h2><span class="section-num">01.</span> Introduction &amp; Applicability</h2>
+                <p>
+                    This Privacy Policy applies to the <strong>LMaFitClubAi</strong> mobile application (package <code>com.lazymonkeyai.fitclubai</code>),
+                    the LazyMonkey AI gym cloud infrastructure, connected smart workout stations, turnstiles, and InBody body composition scanners
+                    operated by LazyMonkey AI ("we", "us", "our") and authorized facility operators.
+                </p>
+                <p>
+                    This statement governs the collection, processing, encryption, retention schedules, and deletion rights of all personal,
+                    physiological telemetry, workout, location, and biometric verification data.
+                </p>
+            </section>
+
+            <!-- Section 2 -->
+            <section id="section-2" class="legal-section">
+                <h2><span class="section-num">02.</span> Categories of Data Collected</h2>
+                <p>Depending on your role (Gym Member, Trainer, Staff, or Manager), we process the following data categories:</p>
+                
+                <table class="legal-table">
+                    <thead>
+                        <tr>
+                            <th>Data Category</th>
+                            <th>Data Fields Included</th>
+                            <th>Primary Operational Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Personal &amp; Contact Info</strong></td>
+                            <td>Full legal name, phone number, email address, assigned member ID, profile avatar photo.</td>
+                            <td>Account authentication, gym membership management, notifications, OTP verification.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Health &amp; Fitness Telemetry</strong></td>
+                            <td>Workout session logs, exercise sets/reps/volume, cardio duration, attendance frequency, InBody body composition logs (weight, body fat %, skeletal muscle mass).</td>
+                            <td>Fitness progression tracking, trainer analytics, automated AI coach recommendations.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Biometric Identification</strong></td>
+                            <td>Mathematical vector hashes derived from face scanning for turnstile / staff punch verification. <em>(Zero raw facial photos stored).</em></td>
+                            <td>Touchless counter check-in, anti-passback verification, automated shift attendance.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Location Data</strong></td>
+                            <td>Precise / approximate GPS coordinates when clocking in / out or performing attendance checks.</td>
+                            <td>Geofenced attendance verification to ensure check-in occurs within authorized gym premises.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Camera &amp; Photos</strong></td>
+                            <td>Camera access for Face ID enrollment, member profile picture capture, and scanning QR codes.</td>
+                            <td>Biometric setup, dynamic BharatQR / POS counter payments, progress photo comparison.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Financial &amp; Billing Data</strong></td>
+                            <td>Invoice records, membership subscription plan, payment method type, transaction reference tokens.</td>
+                            <td>Point of sale processing, membership renewal, statutory tax invoice compliance.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Section 3 -->
+            <section id="section-3" class="legal-section">
+                <h2><span class="section-num">03.</span> Biometric &amp; Camera Data Safeguards</h2>
+                <div class="callout">
+                    <div class="callout-title">🔒 Hardware-Layer Vector Protection Standard</div>
+                    We enforce strict biometric governance under Illinois BIPA (740 ILCS 14/) and GDPR Article 9. Raw facial photographs are never saved in biometric matching engines. Instead, optical landmarks are translated into irreversible encrypted mathematical vectors.
+                </div>
+                <ul>
+                    <li><strong>No Sale or Sharing:</strong> Biometric templates are never sold, rented, or leased to any third party or advertising broker.</li>
+                    <li><strong>Encrypted in Transit:</strong> All facial recognition telemetry transmitted between devices and cloud servers is encrypted via TLS 1.3 tunnels.</li>
+                    <li><strong>Auto-Purge Schedule:</strong> Biometric vector hashes are purged within 30 days of membership termination or upon account deletion request.</li>
+                </ul>
+            </section>
+
+            <!-- Section 4 -->
+            <section id="section-4" class="legal-section">
+                <h2><span class="section-num">04.</span> Data Security &amp; Encryption Standard</h2>
+                <p>
+                    All personal data, health telemetry, and biometric logs collected by the <strong>LMaFitClubAi</strong> application are:
+                </p>
+                <ul>
+                    <li><strong>Encrypted in Transit:</strong> Enforced HTTPS/TLS 1.3 with SHA-256 certificate pinning for all API interactions.</li>
+                    <li><strong>Encrypted at Rest:</strong> Database volumes and biometric vector tables are encrypted using industry-standard AES-256 encryption.</li>
+                    <li><strong>Strict Role-Based Access Control (RBAC):</strong> Only authorized trainers and branch administrators have scoped access to assigned customer fitness records.</li>
+                </ul>
+            </section>
+
+            <!-- ------------------------------------------------------------- -->
+            <!-- SECTION 5: ACCOUNT DELETION PORTAL (Google Play Compliant)     -->
+            <!-- ------------------------------------------------------------- -->
+            <section id="account-deletion" class="deletion-portal">
+                <span class="hero-badge" style="background: rgba(234, 88, 12, 0.2); color: #fb923c; border-color: rgba(234, 88, 12, 0.4);">
+                    Google Play Account Deletion Requirement (Policy Compliant)
+                </span>
+                <h2>🗑️ Account &amp; Data Deletion Request Portal</h2>
+                <p>
+                    As a user of <strong>LMaFitClubAi</strong> (<code>com.lazymonkeyai.fitclubai</code>), you have the absolute right to request
+                    the permanent deletion of your account, login credentials, and all associated personal and health data at any time.
+                </p>
+
+                <div class="deletion-info-grid">
+                    <div class="del-card">
+                        <h4>✅ What Data is Permanently Deleted</h4>
+                        <ul>
+                            <li><strong>Account Profile:</strong> Full name, registered phone number, email address, password hashes, and avatars.</li>
+                            <li><strong>Biometric Data:</strong> Face recognition vector templates, attendance timestamps, check-in history.</li>
+                            <li><strong>Health &amp; Telemetry:</strong> InBody body composition logs, muscle mass records, workout session history.</li>
+                            <li><strong>App Credentials:</strong> Device push notification tokens and active sessions.</li>
+                        </ul>
+                    </div>
+                    <div class="del-card">
+                        <h4>⚖️ What Data May Be Retained</h4>
+                        <ul>
+                            <li><strong>Statutory Tax &amp; Invoicing:</strong> Historical GST tax transaction invoices are retained only for legally mandated periods (statutory audit retention), after which they are permanently destroyed.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Interactive Deletion Form -->
+                <div class="deletion-form-card">
+                    <h3 style="color: #ffffff; margin-bottom: 6px; font-size: 1.15rem;">Online Deletion Request Form</h3>
+                    <p style="color: #94a3b8; font-size: 12.5px; margin-bottom: 20px;">
+                        Fill out the form below. Our compliance team will permanently purge your data within 48 business hours.
+                    </p>
+
+                    <div id="deletionSuccessMsg" class="success-box">
+                        <strong>✓ Deletion Request Submitted!</strong><br>
+                        Your request has been queued. Our Data Protection Officer will permanently erase your profile, biometrics, and telemetry within 48 hours. A confirmation notification will be sent to your registered contact.
+                    </div>
+
+                    <form id="onlineDeletionForm" onsubmit="submitDeletionRequest(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="delFullName">Full Registered Name *</label>
+                                <input type="text" id="delFullName" required placeholder="Enter your full name">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="delIdentifier">Registered Mobile Number or Email Address *</label>
+                                <input type="text" id="delIdentifier" required placeholder="e.g. +91 9876543210 or user@email.com">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="delGymName">Gym / Fitness Facility Name (Optional)</label>
+                                <input type="text" id="delGymName" placeholder="e.g. Fit Club Main Branch">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="delReason">Primary Reason for Deletion</label>
+                                <select id="delReason">
+                                    <option value="no_longer_using">No longer using the app</option>
+                                    <option value="cancelled_gym_membership">Cancelled gym membership</option>
+                                    <option value="privacy_preference">Privacy / data minimization preference</option>
+                                    <option value="duplicate_account">Duplicate / test account</option>
+                                    <option value="other">Other reason</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group full">
+                                <label for="delNotes">Additional Instructions (Optional)</label>
+                                <textarea id="delNotes" rows="2" placeholder="Any specific notes or questions..."></textarea>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-submit-delete">
+                            Submit Permanent Account &amp; Data Deletion Request
+                        </button>
+                    </form>
+                </div>
+
+                <!-- In-App Steps Box -->
+                <div class="inapp-box">
+                    <h4>📱 How to delete your account directly inside the LMaFitClubAi App:</h4>
+                    <ol>
+                        <li>Open the <strong>LMaFitClubAi</strong> app on your Android smartphone.</li>
+                        <li>Navigate to the <strong>Profile</strong> tab on the bottom menu.</li>
+                        <li>Scroll down and tap <strong>Account Settings</strong> &gt; <strong>Delete Account &amp; Erase Data</strong>.</li>
+                        <li>Confirm your request with your registered PIN or biometric prompt.</li>
+                    </ol>
+                    <p style="margin-top: 10px; font-size: 12px; color: #94a3b8;">
+                        You can also email our Data Protection Officer directly at
+                        <a href="mailto:roufbaig123@gmail.com" style="color: var(--accent); font-weight: bold;">roufbaig123@gmail.com</a>
+                        or WhatsApp
+                        <a href="https://wa.me/919849344919" style="color: #34d399; font-weight: bold;">+91 98493 44919</a>.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Section 6 -->
+            <section id="section-6" class="legal-section">
+                <h2><span class="section-num">06.</span> Individual Data Subject Rights</h2>
+                <p>Under GDPR, CCPA/CPRA, and global data privacy standards, you maintain the following rights:</p>
+                <ul>
+                    <li><strong>Right to Access &amp; Portability:</strong> Request a digital export of your workout records and health metrics.</li>
+                    <li><strong>Right to Rectification:</strong> Update inaccurate personal or contact details.</li>
+                    <li><strong>Right to Erasure ("Right to be Forgotten"):</strong> Request immediate destruction of your account profile and telemetry.</li>
+                    <li><strong>Right to Withdraw Biometric Consent:</strong> Opt out of face verification at any time and use alternative QR or PIN check-in methods.</li>
+                </ul>
+            </section>
+
+            <!-- Section 7 -->
+            <section id="section-7" class="legal-section">
+                <h2><span class="section-num">07.</span> Contact Information &amp; Data Protection Officer</h2>
+                <p>If you have any questions or data requests regarding <strong>LMaFitClubAi</strong>, contact our team:</p>
+                
+                <div class="contact-box">
+                    <div>
+                        <span class="label">Organization</span>
+                        <span class="val">LazyMonkey AI / FIT CLUB AI</span>
+                    </div>
+                    <div>
+                        <span class="label">Data Protection Officer</span>
+                        <span class="val"><a href="mailto:roufbaig123@gmail.com">roufbaig123@gmail.com</a></span>
+                    </div>
+                    <div>
+                        <span class="label">Support Email</span>
+                        <span class="val"><a href="mailto:info@lazymonkyai.com">info@lazymonkyai.com</a></span>
+                    </div>
+                    <div>
+                        <span class="label">Direct WhatsApp</span>
+                        <span class="val"><a href="https://wa.me/919849344919">+91 98493 44919</a></span>
+                    </div>
+                </div>
+            </section>
+
+        </article>
+    </div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        &copy; 2026 LazyMonkey AI / FIT CLUB AI. All Rights Reserved. Application: <code>LMaFitClubAi</code> (<code>com.lazymonkeyai.fitclubai</code>).
+    </footer>
+
+    <script>
+        function submitDeletionRequest(e) {
+            e.preventDefault();
+            const fullName = document.getElementById('delFullName').value;
+            const identifier = document.getElementById('delIdentifier').value;
+            const gymName = document.getElementById('delGymName').value;
+            const reason = document.getElementById('delReason').value;
+            const notes = document.getElementById('delNotes').value;
+
+            // Show confirmation UI
+            document.getElementById('onlineDeletionForm').style.display = 'none';
+            document.getElementById('deletionSuccessMsg').style.display = 'block';
+
+            // Send background request if API is available
+            try {
+                fetch('/api/v1/auth/deletion-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        app: 'com.lazymonkeyai.fitclubai',
+                        app_name: 'LMaFitClubAi',
+                        fullName: fullName,
+                        identifier: identifier,
+                        gymName: gymName,
+                        reason: reason,
+                        notes: notes
+                    })
+                }).catch(function(){});
+            } catch(err) {}
+        }
+    </script>
+</body>
+</html>

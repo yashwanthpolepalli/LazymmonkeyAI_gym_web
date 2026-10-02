@@ -32,7 +32,7 @@ export function PrivacyPolicyPage() {
             Effective: Aug 28, 2026
           </span>
           <a
-            href="/privacy.html"
+            href="/LMaFitClubAi_privacy.html"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-orange-500/20"
@@ -116,7 +116,7 @@ export function PrivacyPolicyPage() {
               <p className="text-xs text-slate-600 font-medium">Includes BIPA (Illinois 740 ILCS 14/), GDPR Art. 9, CCPA/CPRA, and HIPAA alignment statutory clauses.</p>
             </div>
             <a
-              href="/privacy.html"
+              href="/LMaFitClubAi_privacy.html"
               target="_blank"
               rel="noopener noreferrer"
               className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs transition-colors shrink-0 flex items-center gap-2 shadow-md shadow-orange-600/20"
