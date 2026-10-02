@@ -137,11 +137,11 @@ def get_staff_face_status(
     usr = db.query(User).filter((User.id == employee_id) | (User.email.ilike(employee_id))).first()
 
     face_img = None
-    if emp and emp.avatar and len(emp.avatar) > 50:
+    if emp and getattr(emp, 'avatar', None) and len(str(emp.avatar)) > 50:
         face_img = emp.avatar
-    elif usr and usr.avatar and len(usr.avatar) > 50:
-        face_img = usr.avatar
-    elif trainer and trainer.profile_image and len(trainer.profile_image) > 50:
+    elif usr and getattr(usr, 'avatar_url', None) and len(str(usr.avatar_url)) > 50:
+        face_img = usr.avatar_url
+    elif trainer and getattr(trainer, 'profile_image', None) and len(str(trainer.profile_image)) > 50:
         face_img = trainer.profile_image
 
     enroll_log = None
@@ -159,8 +159,17 @@ def get_staff_face_status(
         if not face_img and enroll_log.meta_data and enroll_log.meta_data.get("face_image"):
             face_img = enroll_log.meta_data.get("face_image")
 
-    name = f"{emp.first_name} {emp.last_name or ''}".strip() if emp else (trainer.full_name if trainer else (usr.name if usr else employee_id))
-    role = (trainer.role if trainer and trainer.role else None) or (emp.designation if emp and emp.designation else None) or (usr.role if usr and usr.role else None) or "Trainer"
+    name = (
+        f"{emp.first_name} {emp.last_name or ''}".strip()
+        if emp
+        else (trainer.full_name if trainer else (getattr(usr, 'full_name', None) or employee_id))
+    )
+    role = (
+        (trainer.role if trainer and trainer.role else None)
+        or (emp.designation if emp and emp.designation else None)
+        or (usr.role if usr and usr.role else None)
+        or "Trainer"
+    )
 
     return {
         "is_enrolled": bool(face_img and len(face_img) > 50),
@@ -203,14 +212,18 @@ def register_staff_face(payload: dict, db: Session = Depends(get_db)):
 
     usr = db.query(User).filter((User.id == employee_id) | (User.email.ilike(employee_id))).first()
 
-    if emp:
+    if emp and hasattr(emp, 'avatar'):
         emp.avatar = raw_img
-    if usr:
-        usr.avatar = raw_img
-    if trainer:
+    if usr and hasattr(usr, 'avatar_url'):
+        usr.avatar_url = raw_img
+    if trainer and hasattr(trainer, 'profile_image'):
         trainer.profile_image = raw_img
 
-    name = payload.get("full_name") or (f"{emp.first_name} {emp.last_name or ''}".strip() if emp else (trainer.full_name if trainer else (usr.name if usr else employee_id)))
+    name = payload.get("full_name") or (
+        f"{emp.first_name} {emp.last_name or ''}".strip()
+        if emp
+        else (trainer.full_name if trainer else (getattr(usr, 'full_name', None) or employee_id))
+    )
     role = (
         payload.get("user_role")
         or (trainer.role if trainer and trainer.role else None)
@@ -302,8 +315,25 @@ def verify_staff_face_punch(payload: dict, db: Session = Depends(get_db)):
     ).first()
     usr = db.query(User).filter((User.id == employee_id) | (User.email.ilike(employee_id))).first()
 
-    stored_avatar = (emp.avatar if emp else None) or (usr.avatar if usr else None)
-    if not stored_avatar or len(stored_avatar) < 50:
+    stored_avatar = (
+        (getattr(emp, 'avatar', None) if emp else None)
+        or (getattr(usr, 'avatar_url', None) if usr else None)
+        or (getattr(trainer, 'profile_image', None) if trainer else None)
+    )
+
+    if not stored_avatar or len(str(stored_avatar).strip()) < 50:
+        try:
+            from src.models.biometric import BiometricLog
+            enroll_log = db.query(BiometricLog).filter(
+                (BiometricLog.direction == "ENROLL") | (BiometricLog.event_type == "FACE_ENROLLMENT"),
+                (BiometricLog.customer_id == employee_id)
+            ).order_by(BiometricLog.timestamp.desc()).first()
+            if enroll_log and enroll_log.meta_data and enroll_log.meta_data.get("face_image"):
+                stored_avatar = enroll_log.meta_data.get("face_image")
+        except Exception:
+            pass
+
+    if not stored_avatar or len(str(stored_avatar).strip()) < 50:
         raise HTTPException(status_code=400, detail="Face ID not enrolled. Please enroll your face first.")
 
     import hashlib
@@ -313,7 +343,11 @@ def verify_staff_face_punch(payload: dict, db: Session = Depends(get_db)):
     seed_val = int(combined_hash[:4], 16) % 35
     confidence = round(0.965 + (seed_val / 1000.0), 4)
 
-    name = f"{emp.first_name} {emp.last_name or ''}".strip() if emp else (trainer.full_name if trainer else (usr.name if usr else employee_id))
+    name = (
+        f"{emp.first_name} {emp.last_name or ''}".strip()
+        if emp
+        else (trainer.full_name if trainer else (getattr(usr, 'full_name', None) or employee_id))
+    )
     resolved_role = (
         (user_role if user_role else None)
         or (trainer.role if trainer and trainer.role else None)

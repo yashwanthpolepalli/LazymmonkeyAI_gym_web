@@ -44,10 +44,32 @@ def onboard_organization(payload: dict = Body(...), db: Session = Depends(get_db
 
 
 @router.post("/owners/{user_id}/reset-credentials")
+@router.post("/gyms/{user_id}/reset-credentials")
 def reset_owner_credentials(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
     """Reset Gym Owner credentials dynamically with bcrypt hashing and audit logging."""
-    new_password = payload.get("new_password") or payload.get("password") or "FitClub@2026"
-    return SuperAdminService.reset_owner_credentials(db, user_id, new_password)
+    new_password = payload.get("new_password") or payload.get("password")
+    if not new_password or len(str(new_password).strip()) < 6:
+        raise HTTPException(status_code=400, detail="Password is required and must be at least 6 characters long")
+    email = payload.get("email")
+    name = payload.get("name")
+    return SuperAdminService.reset_owner_credentials(db, user_id, str(new_password).strip(), email=email, name=name)
+
+
+@router.delete("/gyms/{gym_id}")
+@router.delete("/organizations/{gym_id}")
+def delete_organization(gym_id: str, db: Session = Depends(get_db)):
+    """Delete a single organization and cascaded branch data."""
+    return SuperAdminService.delete_organizations(db, [gym_id])
+
+
+@router.post("/gyms/bulk-delete")
+@router.post("/organizations/bulk-delete")
+def bulk_delete_organizations(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Bulk delete selected organizations and cascaded branch data."""
+    org_ids = payload.get("ids") or payload.get("gym_ids") or []
+    if not isinstance(org_ids, list):
+        org_ids = [str(org_ids)]
+    return SuperAdminService.delete_organizations(db, org_ids)
 
 
 @router.patch("/owners/{user_id}/status")

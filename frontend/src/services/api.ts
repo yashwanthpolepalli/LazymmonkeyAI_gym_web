@@ -184,7 +184,10 @@ export const api = {
     gyms: (): Promise<any[]> => apiClient.get('/superadmin/gyms'),
     onboardGym: (payload: any): Promise<any> => apiClient.post('/superadmin/gyms', payload),
     updateGymStatus: (gymId: string, status: string): Promise<any> => apiClient.patch(`/superadmin/gyms/${gymId}/status`, { status }),
-    resetOwnerCredentials: (userId: string, newPassword?: string): Promise<any> => apiClient.post(`/superadmin/owners/${userId}/reset-credentials`, { password: newPassword }),
+    deleteOrganization: (gymId: string): Promise<any> => apiClient.delete(`/superadmin/gyms/${gymId}`),
+    bulkDeleteOrganizations: (ids: string[]): Promise<any> => apiClient.post('/superadmin/gyms/bulk-delete', { ids }),
+    resetOwnerCredentials: (userIdOrGymId: string, newPassword?: string, email?: string, name?: string): Promise<any> =>
+      apiClient.post(`/superadmin/owners/${userIdOrGymId}/reset-credentials`, { password: newPassword, email, name }),
     updateOwnerStatus: (userId: string, isActive: boolean): Promise<any> => apiClient.patch(`/superadmin/owners/${userId}/status`, { is_active: isActive }),
     users: (): Promise<any[]> => apiClient.get('/superadmin/users'),
     plans: (): Promise<any[]> => apiClient.get('/superadmin/plans'),

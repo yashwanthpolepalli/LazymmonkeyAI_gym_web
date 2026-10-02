@@ -28,7 +28,7 @@ interface PineLabsEDCModalProps {
     cardBrand: string;
     cardLast4: string;
     batchNumber: string;
-    terminalId: string;
+    terminalId?: string;
   }) => void;
 }
 

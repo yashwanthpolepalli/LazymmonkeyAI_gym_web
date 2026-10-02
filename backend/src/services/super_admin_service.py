@@ -533,8 +533,8 @@ class SuperAdminService:
         # Comprehensive Audit log event with billing breakdown
         log = PlatformAuditLog(
             id=f"audit_{uuid.uuid4().hex[:12]}",
-            actor_name=actor_info.get("name") if actor_info else "Super Admin",
-            actor_email=actor_info.get("email") if actor_info else "superadmin@fitclub.com",
+            actor_name=actor_info.get("name") if actor_info else None,
+            actor_email=actor_info.get("email") if actor_info else None,
             organization_id=branch.id,
             organization_name=gym_name,
             action="ONBOARD_OWNER_CREDENTIALS",
@@ -592,25 +592,97 @@ class SuperAdminService:
         }
 
     @staticmethod
-    def reset_owner_credentials(db: Session, user_id: str, new_password: str, actor_info: Optional[dict] = None) -> Dict[str, Any]:
-        user = db.query(User).filter(or_(User.id == user_id, func.lower(User.email) == user_id.strip().lower())).first()
-        if not user:
-            return {"success": False, "message": "Owner account not found"}
-
+    def reset_owner_credentials(
+        db: Session,
+        user_id: str,
+        new_password: str,
+        email: Optional[str] = None,
+        name: Optional[str] = None,
+        actor_info: Optional[dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Reset Gym Owner credentials dynamically with bcrypt hashing and audit logging.
+        Stores updated password in hash ($2b$...) in the users table in DB.
+        """
         if not new_password or len(new_password.strip()) < 6:
             return {"success": False, "message": "Password must be at least 6 characters long"}
 
         clean_pwd = new_password.strip()
-        user.password_hash = hash_password(clean_pwd)
+        hashed_pwd = hash_password(clean_pwd)
+
+        # 1. Try finding user by ID or email
+        user = db.query(User).filter(
+            or_(
+                User.id == user_id,
+                func.lower(User.email) == user_id.strip().lower()
+            )
+        ).first()
+
+        branch = None
+        # 2. If not found by direct user ID, check if user_id is a GymBranch.id
+        if not user:
+            branch = db.query(GymBranch).filter(GymBranch.id == user_id).first()
+            if branch:
+                if branch.owner_id:
+                    user = db.query(User).filter(User.id == branch.owner_id).first()
+                if not user:
+                    user = db.query(User).filter(User.branch_id == branch.id, User.role == "GYM_OWNER").first()
+
+        # 3. If still not found, check by provided email if available
+        if not user and email and email.strip():
+            user = db.query(User).filter(func.lower(User.email) == email.strip().lower()).first()
+
+        # 4. If user still doesn't exist, create a new GYM_OWNER user account
+        if not user:
+            target_email = (email or "").strip().lower()
+            if not target_email:
+                return {
+                    "success": False,
+                    "message": "Owner email is required. Please provide a valid email address."
+                }
+
+            existing_with_email = db.query(User).filter(func.lower(User.email) == target_email).first()
+            if existing_with_email:
+                user = existing_with_email
+            else:
+                user = User(
+                    id=f"usr_owner_{uuid.uuid4().hex[:10]}",
+                    email=target_email,
+                    password_hash=hashed_pwd,
+                    role="GYM_OWNER",
+                    full_name=(name or (branch.gym_name if branch else "Gym Owner")).strip(),
+                    branch_id=branch.id if branch else None,
+                    is_active=True,
+                    is_tenant_owner=True,
+                    created_at=now_ist_naive(),
+                    updated_at=now_ist_naive()
+                )
+                db.add(user)
+                if branch:
+                    branch.owner_id = user.id
+
+        # 5. User exists or was created, update password hash and metadata
+        user.password_hash = hashed_pwd
+        if email and email.strip() and user.email != email.strip().lower():
+            user.email = email.strip().lower()
+        if name and name.strip():
+            user.full_name = name.strip()
+        user.is_active = True
         user.updated_at = now_ist_naive()
 
-        # Audit log event
+        if not branch and user.branch_id:
+            branch = db.query(GymBranch).filter(GymBranch.id == user.branch_id).first()
+
+        if branch and branch.owner_id != user.id:
+            branch.owner_id = user.id
+
+        # 6. Record Audit Log
         log = PlatformAuditLog(
             id=f"audit_{uuid.uuid4().hex[:12]}",
-            actor_name=actor_info.get("name") if actor_info else "Super Admin",
-            actor_email=actor_info.get("email") if actor_info else "superadmin@fitclub.com",
-            organization_id="PLATFORM",
-            organization_name="Fit Club Platform",
+            actor_name=actor_info.get("name") if actor_info else None,
+            actor_email=actor_info.get("email") if actor_info else None,
+            organization_id=branch.id if branch else None,
+            organization_name=branch.gym_name if branch else None,
             action="RESET_OWNER_CREDENTIALS",
             resource_type="owner_credentials",
             resource_id=user.id,
@@ -618,7 +690,7 @@ class SuperAdminService:
                 "owner_id": user.id,
                 "owner_name": user.full_name,
                 "owner_email": user.email,
-                "action": "Admin Credential Reset",
+                "action": "Admin Credential Reset with Bcrypt Hash",
                 "timestamp": now_ist_naive().isoformat()
             }
         )
@@ -631,7 +703,97 @@ class SuperAdminService:
             "owner_name": user.full_name,
             "owner_email": user.email,
             "new_password": clean_pwd,
-            "message": f"Credentials successfully reset for {user.full_name} ({user.email})"
+            "message": f"Credentials successfully hashed and updated for {user.full_name} ({user.email})"
+        }
+
+    @staticmethod
+    def delete_organizations(db: Session, org_ids: List[str], actor_info: Optional[dict] = None) -> Dict[str, Any]:
+        """Permanently delete one or more gym branches/organizations and clean up related records safely."""
+        if not org_ids:
+            return {"success": False, "message": "No organization IDs provided", "deleted_count": 0}
+
+        from src.models.gym_slot_booking import GymSlotBooking
+        from src.models.plan import MembershipPlan
+
+        deleted_names = []
+        for org_id in org_ids:
+            branch = db.query(GymBranch).filter(GymBranch.id == org_id).first()
+            if not branch:
+                continue
+
+            deleted_names.append(branch.gym_name)
+            owner_id = branch.owner_id
+
+            # 1. Delete slot bookings associated with this branch
+            try:
+                db.query(GymSlotBooking).filter(
+                    or_(GymSlotBooking.branch_id == branch.id, GymSlotBooking.branch_name == branch.branch_name)
+                ).delete(synchronize_session=False)
+            except Exception:
+                pass
+
+            # 2. Delete membership plans for this branch
+            try:
+                db.query(MembershipPlan).filter(
+                    or_(MembershipPlan.branch_id == branch.id, MembershipPlan.owner_id == owner_id if owner_id else False)
+                ).delete(synchronize_session=False)
+            except Exception:
+                pass
+
+            # 3. Find customers for this branch and cascade delete
+            customers = db.query(Customer).filter(
+                or_(
+                    Customer.branch_id == branch.id,
+                    Customer.owner_id == owner_id if owner_id else False,
+                    Customer.primary_gym_location.ilike(f"%{branch.branch_name}%")
+                )
+            ).all()
+            cust_user_ids = [c.user_id for c in customers if c.user_id]
+            for c in customers:
+                db.delete(c)
+            db.flush()
+
+            # Delete customer user login accounts
+            if cust_user_ids:
+                db.query(User).filter(User.id.in_(cust_user_ids), User.role == "CUSTOMER").delete(synchronize_session=False)
+
+            # 4. Delete staff/trainers/owners specifically linked to this branch (preserve SUPER_ADMIN)
+            db.query(User).filter(
+                or_(
+                    User.branch_id == branch.id,
+                    User.id == owner_id if owner_id else False
+                ),
+                User.role != "SUPER_ADMIN"
+            ).delete(synchronize_session=False)
+
+            # 5. Delete the GymBranch entity
+            db.delete(branch)
+
+        # Audit log event
+        log = PlatformAuditLog(
+            id=f"audit_{uuid.uuid4().hex[:12]}",
+            actor_name=actor_info.get("name") if actor_info else None,
+            actor_email=actor_info.get("email") if actor_info else None,
+            organization_id=org_ids[0] if len(org_ids) == 1 else None,
+            organization_name=deleted_names[0] if len(deleted_names) == 1 else None,
+            action="BULK_DELETE_ORGANIZATIONS",
+            resource_type="organization",
+            resource_id=",".join(org_ids),
+            new_value={
+                "deleted_ids": org_ids,
+                "deleted_names": deleted_names,
+                "count": len(deleted_names),
+                "timestamp": now_ist_naive().isoformat()
+            }
+        )
+        db.add(log)
+        db.commit()
+
+        return {
+            "success": True,
+            "deleted_count": len(deleted_names),
+            "deleted_names": deleted_names,
+            "message": f"Successfully deleted {len(deleted_names)} organization(s)"
         }
 
     @staticmethod
@@ -640,6 +802,7 @@ class SuperAdminService:
         if not user:
             return {"success": False, "message": "Owner account not found"}
 
+        branch = db.query(GymBranch).filter(GymBranch.id == user.branch_id).first() if user.branch_id else None
         old_status = "Active" if user.is_active else "Suspended"
         user.is_active = is_active
         user.updated_at = now_ist_naive()
@@ -647,10 +810,10 @@ class SuperAdminService:
         # Audit log event
         log = PlatformAuditLog(
             id=f"audit_{uuid.uuid4().hex[:12]}",
-            actor_name=actor_info.get("name") if actor_info else "Super Admin",
-            actor_email=actor_info.get("email") if actor_info else "superadmin@fitclub.com",
-            organization_id="PLATFORM",
-            organization_name="Fit Club Platform",
+            actor_name=actor_info.get("name") if actor_info else None,
+            actor_email=actor_info.get("email") if actor_info else None,
+            organization_id=branch.id if branch else None,
+            organization_name=branch.gym_name if branch else None,
             action="CHANGE_OWNER_STATUS",
             resource_type="owner_credentials",
             resource_id=user.id,

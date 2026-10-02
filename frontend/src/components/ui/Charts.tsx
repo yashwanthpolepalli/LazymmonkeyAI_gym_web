@@ -129,18 +129,31 @@ interface LineChartProps {
   area?: boolean;
 }
 
-export function LineChart({ data, labels, height = 180, color = '#2563eb', className, area = true }: LineChartProps) {
-  const max = Math.max(...data) * 1.1 || 1;
-  const min = Math.min(...data) * 0.9;
+export function LineChart({ data = [], labels = [], height = 180, color = '#2563eb', className, area = true }: LineChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className={cn('w-full flex flex-col items-center justify-center text-navy-400 text-xs py-8 border border-dashed border-navy-200 rounded-xl', className)} style={{ height }}>
+        <span>No chart data available</span>
+      </div>
+    );
+  }
+
+  const validData = data.map((v) => (Number.isFinite(v) ? v : 0));
+  const max = Math.max(...validData, 1) * 1.1;
+  const min = Math.min(...validData, 0) * 0.9;
   const range = max - min || 1;
   const w = 100;
   const h = height;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * (h - 20) - 10;
-    return `${x},${y}`;
-  });
-  const pathD = `M ${points.join(' L ')}`;
+
+  const points = validData.length === 1
+    ? [`0,${h - ((validData[0] - min) / range) * (h - 20) - 10}`, `${w},${h - ((validData[0] - min) / range) * (h - 20) - 10}`]
+    : validData.map((v, i) => {
+        const x = (i / (validData.length - 1)) * w;
+        const y = h - ((v - min) / range) * (h - 20) - 10;
+        return `${x},${y}`;
+      });
+
+  const pathD = points.length > 0 ? `M ${points.join(' L ')}` : `M 0,${h / 2} L ${w},${h / 2}`;
   const areaD = `${pathD} L ${w},${h} L 0,${h} Z`;
   const gid = `line-${color.replace('#', '')}`;
 
@@ -155,17 +168,19 @@ export function LineChart({ data, labels, height = 180, color = '#2563eb', class
         </defs>
         {area && <path d={areaD} fill={`url(#${gid})`} />}
         <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        {data.map((v, i) => {
-          const x = (i / (data.length - 1)) * w;
+        {validData.map((v, i) => {
+          const x = validData.length === 1 ? w / 2 : (i / (validData.length - 1)) * w;
           const y = h - ((v - min) / range) * (h - 20) - 10;
           return <circle key={i} cx={x} cy={y} r="1.5" fill={color} vectorEffect="non-scaling-stroke" />;
         })}
       </svg>
-      <div className="flex justify-between mt-2">
-        {labels.map((l, i) => (
-          <span key={i} className="text-[10px] font-medium text-navy-400">{l}</span>
-        ))}
-      </div>
+      {labels && labels.length > 0 && (
+        <div className="flex justify-between mt-2">
+          {labels.map((l, i) => (
+            <span key={i} className="text-[10px] font-medium text-navy-400">{l}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

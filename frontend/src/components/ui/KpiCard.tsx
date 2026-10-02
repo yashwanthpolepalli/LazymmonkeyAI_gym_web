@@ -2,14 +2,15 @@ import { cn } from '@/utils/cn';
 
 export interface KpiCardProps {
   id?: string;
-  label: string;
-  value: string;
+  label?: string;
+  title?: string;
+  value?: string | number;
   change?: number | string;
   changeLabel?: string;
   sparkline?: number[];
   status?: 'up' | 'down' | 'neutral';
-  trend?: 'up' | 'down' | 'neutral';
-  icon: string;
+  trend?: 'up' | 'down' | 'neutral' | string;
+  icon?: string;
   accent?: 'brand' | 'success' | 'warning' | 'danger' | 'ai';
 }
 
@@ -24,8 +25,22 @@ const accentMap = {
 import { Icon } from './Icon';
 import { Sparkline } from './Sparkline';
 
-export function KpiCard({ label, value, change, changeLabel, sparkline, status, trend, icon, accent = 'brand' }: KpiCardProps) {
-  const currentStatus = status || trend || 'neutral';
+export function KpiCard({
+  label,
+  title,
+  value = '0',
+  change,
+  changeLabel,
+  sparkline,
+  status,
+  trend,
+  icon = 'activity',
+  accent = 'brand',
+}: KpiCardProps) {
+  const displayLabel = label || title || '';
+  const currentStatus = (status === 'up' || status === 'down' || status === 'neutral')
+    ? status
+    : (trend === 'up' || trend === 'down' || trend === 'neutral' ? trend : 'neutral');
   const a = accentMap[accent] || accentMap.brand;
   const isUp = currentStatus === 'up';
   const isDown = currentStatus === 'down';
@@ -42,7 +57,7 @@ export function KpiCard({ label, value, change, changeLabel, sparkline, status, 
   return (
     <div className="card card-hover p-5 group">
       <div className="flex items-start justify-between mb-3">
-        <span className="stat-label">{label}</span>
+        <span className="stat-label">{displayLabel}</span>
         <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center', a.bg)}>
           <Icon name={icon} size={18} className={a.text} />
         </div>

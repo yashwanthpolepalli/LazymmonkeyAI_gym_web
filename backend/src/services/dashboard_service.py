@@ -763,15 +763,15 @@ class DashboardService:
             rating_str = f"{float(avg_score)/20:.1f}/5" if avg_score else "0.0/5"
 
             return [
-                {"title": "Assigned Clients", "value": assigned_cnt, "trend": "Active Clients", "icon": "users"},
-                {"title": "Sessions Today", "value": today_sessions, "trend": "Today", "icon": "dumbbell"},
-                {"title": "Avg Client Rating", "value": rating_str, "trend": "Score", "icon": "star"}
+                {"id": "assigned_clients", "title": "Assigned Clients", "label": "Assigned Clients", "value": assigned_cnt, "trend": "Active Clients", "icon": "users"},
+                {"id": "sessions_today", "title": "Sessions Today", "label": "Sessions Today", "value": today_sessions, "trend": "Today", "icon": "dumbbell"},
+                {"id": "avg_rating", "title": "Avg Client Rating", "label": "Avg Client Rating", "value": rating_str, "trend": "Score", "icon": "star"}
             ]
         except Exception as e:
             return [
-                {"title": "Assigned Clients", "value": 0, "trend": "Active Clients", "icon": "users"},
-                {"title": "Sessions Today", "value": 0, "trend": "Today", "icon": "dumbbell"},
-                {"title": "Avg Client Rating", "value": "5.0/5", "trend": "Score", "icon": "star"}
+                {"id": "assigned_clients", "title": "Assigned Clients", "label": "Assigned Clients", "value": 0, "trend": "Active Clients", "icon": "users"},
+                {"id": "sessions_today", "title": "Sessions Today", "label": "Sessions Today", "value": 0, "trend": "Today", "icon": "dumbbell"},
+                {"id": "avg_rating", "title": "Avg Client Rating", "label": "Avg Client Rating", "value": "5.0/5", "trend": "Score", "icon": "star"}
             ]
 
     @staticmethod
@@ -784,15 +784,15 @@ class DashboardService:
             active_days = db.query(func.count(func.distinct(func.date(BiometricLog.timestamp)))).scalar() or 0
 
             return [
-                {"title": "Workouts Completed", "value": completed, "trend": "Logged Sessions", "icon": "award"},
-                {"title": "Calorie Burn", "value": burn_str, "trend": "Total Burned", "icon": "flame"},
-                {"title": "Current Streak", "value": f"{active_days} Days", "trend": "Check-ins", "icon": "zap"}
+                {"id": "workouts_completed", "title": "Workouts Completed", "label": "Workouts Completed", "value": completed, "trend": "Logged Sessions", "icon": "award"},
+                {"id": "calorie_burn", "title": "Calorie Burn", "label": "Calorie Burn", "value": burn_str, "trend": "Total Burned", "icon": "flame"},
+                {"id": "current_streak", "title": "Current Streak", "label": "Current Streak", "value": f"{active_days} Days", "trend": "Check-ins", "icon": "zap"}
             ]
         except Exception:
             return [
-                {"title": "Workouts Completed", "value": 0, "trend": "Logged Sessions", "icon": "award"},
-                {"title": "Calorie Burn", "value": "0 kcal", "trend": "Total Burned", "icon": "flame"},
-                {"title": "Current Streak", "value": "0 Days", "trend": "Check-ins", "icon": "zap"}
+                {"id": "workouts_completed", "title": "Workouts Completed", "label": "Workouts Completed", "value": 0, "trend": "Logged Sessions", "icon": "award"},
+                {"id": "calorie_burn", "title": "Calorie Burn", "label": "Calorie Burn", "value": "0 kcal", "trend": "Total Burned", "icon": "flame"},
+                {"id": "current_streak", "title": "Current Streak", "label": "Current Streak", "value": "0 Days", "trend": "Check-ins", "icon": "zap"}
             ]
 
     @staticmethod

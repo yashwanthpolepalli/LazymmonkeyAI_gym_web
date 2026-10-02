@@ -8,17 +8,22 @@ interface SparklineProps {
 }
 
 export function Sparkline({ data, color = '#2563eb', className, height = 32 }: SparklineProps) {
-  if (!data.length) return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
+  if (!data || !data.length) return null;
+  const validData = data.map((v) => (Number.isFinite(v) ? v : 0));
+  const max = Math.max(...validData);
+  const min = Math.min(...validData);
   const range = max - min || 1;
   const w = 100;
   const h = height;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * (h - 4) - 2;
-    return `${x},${y}`;
-  });
+
+  const points = validData.length === 1
+    ? [`0,${h / 2}`, `${w},${h / 2}`]
+    : validData.map((v, i) => {
+        const x = (i / (validData.length - 1)) * w;
+        const y = h - ((v - min) / range) * (h - 4) - 2;
+        return `${x},${y}`;
+      });
+
   const pathD = `M ${points.join(' L ')}`;
   const areaD = `${pathD} L ${w},${h} L 0,${h} Z`;
   const gid = `spark-${color.replace('#', '')}`;

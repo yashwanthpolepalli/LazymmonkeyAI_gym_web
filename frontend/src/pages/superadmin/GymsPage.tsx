@@ -132,8 +132,15 @@ export function GymsPage() {
   } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Selection & Bulk Delete State
+  const [selectedGymIds, setSelectedGymIds] = useState<string[]>([]);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ count: number; ids: string[]; names: string[] } | null>(null);
+
   // Reset Password Modal State
-  const [resetModalUser, setResetModalUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [resetModalUser, setResetModalUser] = useState<{ id: string; gym_id: string; gym_name: string; name: string; email: string } | null>(null);
+  const [resetOwnerName, setResetOwnerName] = useState('');
+  const [resetOwnerEmail, setResetOwnerEmail] = useState('');
   const [newPasswordVal, setNewPasswordVal] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -303,12 +310,67 @@ export function GymsPage() {
     }
   };
 
-  const handleOpenResetModal = (g: any) => {
-    setResetModalUser({
-      id: g.owner_id || g.owner_email || g.id,
-      name: g.owner_name || g.owner || 'Gym Owner',
-      email: g.owner_email || g.owner || '',
+  // Selection handlers
+  const handleToggleSelectAll = (allIds: string[]) => {
+    if (selectedGymIds.length === allIds.length && allIds.length > 0) {
+      setSelectedGymIds([]);
+    } else {
+      setSelectedGymIds([...allIds]);
+    }
+  };
+
+  const handleToggleSelectGym = (id: string) => {
+    setSelectedGymIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // Delete Handlers
+  const handlePromptBulkDelete = () => {
+    const targetGyms = gyms.filter(g => selectedGymIds.includes(g.id));
+    setDeleteConfirmTarget({
+      count: selectedGymIds.length,
+      ids: [...selectedGymIds],
+      names: targetGyms.map(g => g.name || g.branch_name || 'Organization'),
     });
+  };
+
+  const handlePromptSingleDelete = (g: any) => {
+    setDeleteConfirmTarget({
+      count: 1,
+      ids: [g.id],
+      names: [g.name || g.branch_name || 'Organization'],
+    });
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!deleteConfirmTarget || deleteConfirmTarget.ids.length === 0) return;
+    setDeleting(true);
+    try {
+      await api.superAdmin.bulkDeleteOrganizations(deleteConfirmTarget.ids);
+      setSelectedGymIds(prev => prev.filter(id => !deleteConfirmTarget.ids.includes(id)));
+      setDeleteConfirmTarget(null);
+      if (selected && deleteConfirmTarget.ids.includes(selected.id)) {
+        setSelected(null);
+      }
+      fetchGyms();
+    } catch (err) {
+      console.error('Failed to delete organizations', err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleOpenResetModal = (g: any) => {
+    const ownerName = g.owner_name || g.owner || '';
+    const ownerEmail = g.owner_email || '';
+    setResetModalUser({
+      id: g.owner_id || g.id,
+      gym_id: g.id,
+      gym_name: g.name || g.branch_name || 'Gym Organization',
+      name: ownerName,
+      email: ownerEmail,
+    });
+    setResetOwnerName(ownerName);
+    setResetOwnerEmail(ownerEmail);
     setNewPasswordVal(generateSecurePassword());
     setShowNewPassword(false);
     setResetResult(null);
@@ -319,9 +381,15 @@ export function GymsPage() {
     if (!resetModalUser || !newPasswordVal.trim()) return;
     setResetting(true);
     try {
-      await api.superAdmin.resetOwnerCredentials(resetModalUser.id, newPasswordVal.trim());
+      const targetId = resetModalUser.id || resetModalUser.gym_id;
+      await api.superAdmin.resetOwnerCredentials(
+        targetId,
+        newPasswordVal.trim(),
+        resetOwnerEmail.trim(),
+        resetOwnerName.trim()
+      );
       setResetResult({
-        email: resetModalUser.email,
+        email: resetOwnerEmail.trim() || resetModalUser.email,
         password: newPasswordVal.trim(),
       });
       fetchGyms();
@@ -427,7 +495,7 @@ export function GymsPage() {
         }
       />
 
-      {/* Top Search & Filter Bar */}
+      {/* Top Search & Filter Bar with Bulk Delete Action */}
       <div className="card p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-80">
           <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -440,7 +508,30 @@ export function GymsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {selectedGymIds.length > 0 && (
+            <div className="flex items-center gap-2 animate-fade-in bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl">
+              <span className="text-xs font-bold text-rose-700">
+                {selectedGymIds.length} Selected
+              </span>
+              <button
+                type="button"
+                onClick={handlePromptBulkDelete}
+                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+              >
+                <Icon name="trash-2" size={13} />
+                <span>Delete Selected ({selectedGymIds.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedGymIds([])}
+                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 underline cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           <div className="text-xs text-slate-500 font-semibold bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs">
             Total Gyms: <span className="text-blue-600 font-bold">{gyms.length}</span>
           </div>
@@ -453,12 +544,21 @@ export function GymsPage() {
       {/* Gyms Table */}
       <div className="card p-4">
         {loading ? (
-          <SkeletonTable rows={6} cols={8} />
+          <SkeletonTable rows={6} cols={9} />
         ) : filteredGyms.length > 0 ? (
           <div className="overflow-x-auto -mx-4 px-4">
-            <table className="w-full min-w-[950px] text-xs">
+            <table className="w-full min-w-[1000px] text-xs">
               <thead>
                 <tr className="border-b border-navy-100 text-navy-400 text-left font-semibold uppercase tracking-wider">
+                  <th className="px-3 py-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={filteredGyms.length > 0 && selectedGymIds.length === filteredGyms.length}
+                      onChange={() => handleToggleSelectAll(filteredGyms.map(g => g.id))}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                      title="Select / Deselect All Organizations"
+                    />
+                  </th>
                   <th className="px-3 py-3">Gym &amp; Branch</th>
                   <th className="px-3 py-3">Owner Credentials</th>
                   <th className="px-3 py-3">City / Location</th>
@@ -466,107 +566,130 @@ export function GymsPage() {
                   <th className="px-3 py-3">SaaS Plan</th>
                   <th className="px-3 py-3">Billing &amp; Payment</th>
                   <th className="px-3 py-3">Status</th>
-                  <th className="px-3 py-3 text-right">Owner Actions</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredGyms.map((g) => (
-                  <tr
-                    key={g.id}
-                    className="border-b border-navy-50 hover:bg-slate-50/80 transition-colors"
-                  >
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-sm">
-                          <Icon name="building-2" size={16} />
+                {filteredGyms.map((g) => {
+                  const isSelected = selectedGymIds.includes(g.id);
+                  return (
+                    <tr
+                      key={g.id}
+                      className={cn(
+                        "border-b border-navy-50 hover:bg-slate-50/80 transition-colors",
+                        isSelected && "bg-blue-50/40"
+                      )}
+                    >
+                      <td className="px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectGym(g.id)}
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                        />
+                      </td>
+
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+                            <Icon name="building-2" size={16} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">{g.name || '—'}</div>
+                            <div className="text-[11px] text-slate-400 font-medium">{g.branch_name || '—'}</div>
+                          </div>
                         </div>
+                      </td>
+
+                      <td className="px-3 py-3">
                         <div>
-                          <div className="text-sm font-bold text-slate-900">{g.name || '—'}</div>
-                          <div className="text-[11px] text-slate-400 font-medium">{g.branch_name || '—'}</div>
+                          <div className="font-bold text-slate-800">{g.owner_name || g.owner || '—'}</div>
+                          <div className="text-[11px] text-blue-600 font-semibold">{g.owner_email || '—'}</div>
+                          {g.phone && <div className="text-[10px] text-slate-400">{g.phone}</div>}
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-3 py-3">
-                      <div>
-                        <div className="font-bold text-slate-800">{g.owner_name || g.owner || '—'}</div>
-                        <div className="text-[11px] text-blue-600 font-semibold">{g.owner_email || '—'}</div>
-                        {g.phone && <div className="text-[10px] text-slate-400">{g.phone}</div>}
-                      </div>
-                    </td>
-
-                    <td className="px-3 py-3 text-slate-600 font-medium">
-                      <div className="flex items-center gap-1.5">
-                        <Icon name="map-pin" size={13} className="text-slate-400" />
-                        <span>{g.city || '—'}</span>
-                      </div>
-                    </td>
-
-                    <td className="px-3 py-3 font-bold text-slate-700">
-                      {g.members ? g.members.toLocaleString() : 0}
-                    </td>
-
-                    <td className="px-3 py-3">
-                      <Badge variant="brand">{g.plan || 'Pro Growth'}</Badge>
-                    </td>
-
-                    <td className="px-3 py-3">
-                      <div>
-                        <span className="text-xs font-bold text-slate-900">{g.payment_method || 'Cash'}</span>
-                        <div className="text-[10px] text-slate-400 font-semibold capitalize">
-                          {g.billing_cycle || 'monthly'} • ₹{(g.paid_amount || 0).toLocaleString()}
+                      <td className="px-3 py-3 text-slate-600 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="map-pin" size={13} className="text-slate-400" />
+                          <span>{g.city || '—'}</span>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-3 py-3">
-                      <Badge variant={g.is_active ? 'success' : 'danger'} dot>
-                        {g.is_active ? 'Active' : 'Suspended'}
-                      </Badge>
-                    </td>
+                      <td className="px-3 py-3 font-bold text-slate-700">
+                        {g.members ? g.members.toLocaleString() : 0}
+                      </td>
 
-                    <td className="px-3 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => handleOpenResetModal(g)}
-                          title="Reset Owner Password"
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1 transition-all"
-                        >
-                          <Icon name="key" size={13} className="text-amber-600" />
-                          <span>Reset Creds</span>
-                        </button>
+                      <td className="px-3 py-3">
+                        <Badge variant="brand">{g.plan || 'Pro Growth'}</Badge>
+                      </td>
 
-                        {g.is_active ? (
+                      <td className="px-3 py-3">
+                        <div>
+                          <span className="text-xs font-bold text-slate-900">{g.payment_method || 'Cash'}</span>
+                          <div className="text-[10px] text-slate-400 font-semibold capitalize">
+                            {g.billing_cycle || 'monthly'} • ₹{(g.paid_amount || 0).toLocaleString()}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-3">
+                        <Badge variant={g.is_active ? 'success' : 'danger'} dot>
+                          {g.is_active ? 'Active' : 'Suspended'}
+                        </Badge>
+                      </td>
+
+                      <td className="px-3 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => handleStatusChange(g.id, 'suspended')}
-                            title="Suspend Gym & Owner"
-                            className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs flex items-center gap-1 transition-all"
+                            onClick={() => handleOpenResetModal(g)}
+                            title="Reset Owner Password"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1 transition-all cursor-pointer"
                           >
-                            <Icon name="shield-alert" size={13} />
-                            <span>Suspend</span>
+                            <Icon name="key" size={13} className="text-amber-600" />
+                            <span>Reset Creds</span>
                           </button>
-                        ) : (
-                          <button
-                            onClick={() => handleStatusChange(g.id, 'active')}
-                            title="Activate Gym & Owner"
-                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs flex items-center gap-1 transition-all"
-                          >
-                            <Icon name="check" size={13} />
-                            <span>Activate</span>
-                          </button>
-                        )}
 
-                        <button
-                          onClick={() => setSelected(g)}
-                          title="View Gym 360 Overview"
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700"
-                        >
-                          <Icon name="chevron-right" size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {g.is_active ? (
+                            <button
+                              onClick={() => handleStatusChange(g.id, 'suspended')}
+                              title="Suspend Gym & Owner"
+                              className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                            >
+                              <Icon name="shield-alert" size={13} />
+                              <span>Suspend</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleStatusChange(g.id, 'active')}
+                              title="Activate Gym & Owner"
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                            >
+                              <Icon name="check" size={13} />
+                              <span>Activate</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handlePromptSingleDelete(g)}
+                            title="Delete Organization"
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-800 transition-all cursor-pointer"
+                          >
+                            <Icon name="trash-2" size={14} />
+                          </button>
+
+                          <button
+                            onClick={() => setSelected(g)}
+                            title="View Gym 360 Overview"
+                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+                          >
+                            <Icon name="chevron-right" size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1400,26 +1523,61 @@ export function GymsPage() {
               </div>
             ) : (
               <form onSubmit={handleResetSubmit} className="space-y-4">
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                  <div className="text-slate-400 font-semibold">Owner: <span className="text-slate-800 font-bold">{resetModalUser.name}</span></div>
-                  <div className="text-slate-400 font-semibold">Email: <span className="text-blue-600 font-bold">{resetModalUser.email}</span></div>
+                {/* Organization Details */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-bold uppercase text-[10px]">Organization</span>
+                    <span className="text-slate-900 font-bold">{resetModalUser.gym_name}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-bold uppercase text-[10px]">Security</span>
+                    <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-mono text-[10px] font-bold border border-emerald-200">Bcrypt Hash (PostgreSQL)</span>
+                  </div>
                 </div>
 
+                {/* Owner Full Name */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Owner Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={resetOwnerName}
+                    onChange={(e) => setResetOwnerName(e.target.value)}
+                    placeholder="e.g. Vikram Rathore"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                {/* Owner Email */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Owner Login Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={resetOwnerEmail}
+                    onChange={(e) => setResetOwnerEmail(e.target.value)}
+                    placeholder="e.g. owner@fitclub.ai"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                  />
+                </div>
+
+                {/* New Password */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-bold text-slate-700">New Password</label>
                     <button
                       type="button"
                       onClick={() => setNewPasswordVal(generateSecurePassword())}
-                      className="text-[11px] text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1"
+                      className="text-[11px] text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 cursor-pointer"
                     >
-                      <Icon name="refresh-cw" size={11} /> Generate
+                      <Icon name="refresh-cw" size={11} /> Generate Secure
                     </button>
                   </div>
                   <div className="relative flex items-center">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       required
+                      minLength={6}
                       value={newPasswordVal}
                       onChange={(e) => setNewPasswordVal(e.target.value)}
                       className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 pr-9 outline-none font-mono"
@@ -1427,31 +1585,110 @@ export function GymsPage() {
                     <button
                       type="button"
                       onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-2.5 text-slate-400 hover:text-slate-600"
+                      className="absolute right-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       <Icon name={showNewPassword ? 'eye-off' : 'eye'} size={15} />
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setResetModalUser(null)}
-                    className="btn-secondary py-2 px-3 text-xs font-bold"
+                    className="btn-secondary py-2 px-3 text-xs font-bold cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={resetting}
-                    className="btn-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5"
+                    disabled={resetting || !newPasswordVal.trim()}
+                    className="btn-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 cursor-pointer"
                   >
-                    {resetting ? 'Updating...' : 'Set & Update Password'}
+                    {resetting ? (
+                      <>
+                        <Icon name="refresh-cw" size={13} className="animate-spin" />
+                        <span>Hashing &amp; Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="key" size={13} />
+                        <span>Set &amp; Update Password</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* DELETE CONFIRMATION MODAL                                     */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[28px] p-6 sm:p-7 w-full max-w-md space-y-4 shadow-2xl border border-slate-100 animate-scale-in">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <Icon name="trash-2" size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  {deleteConfirmTarget.count === 1 ? 'Delete Organization' : `Delete ${deleteConfirmTarget.count} Organizations`}
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">Permanent deletion and cascade cleanup</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs space-y-2 text-rose-900">
+              <p className="font-semibold leading-relaxed">
+                Are you sure you want to permanently delete {deleteConfirmTarget.count === 1 ? (
+                  <span className="font-black text-rose-950 underline">{deleteConfirmTarget.names[0]}</span>
+                ) : (
+                  <span className="font-black text-rose-950">{deleteConfirmTarget.count} selected organizations</span>
+                )}?
+              </p>
+              <div className="text-[11px] text-rose-700 bg-white/60 p-2.5 rounded-xl border border-rose-200/60 space-y-1">
+                <div className="font-bold">This action will permanently delete:</div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  <li>Organization branches &amp; tenant settings</li>
+                  <li>Linked owner &amp; branch user login accounts</li>
+                  <li>Member registrations, profiles &amp; memberships</li>
+                  <li>Branch slot bookings &amp; membership plans</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="btn-secondary py-2.5 px-4 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleExecuteDelete}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer transition-all"
+              >
+                {deleting ? (
+                  <>
+                    <Icon name="refresh-cw" size={14} className="animate-spin" />
+                    <span>Deleting Organizations...</span>
+                  </>
+                ) : (
+                  <>
+                    <Icon name="trash-2" size={14} />
+                    <span>Confirm &amp; Delete ({deleteConfirmTarget.count})</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1543,7 +1780,6 @@ export function GymsPage() {
         amount={grandTotal}
         billNumber={`ONB-${Date.now().toString().slice(-6)}`}
         customerMobile={onboardForm.phone}
-        terminalId="TID-882194"
         onClose={() => setPineLabsModalOpen(false)}
         onSuccess={(paymentData) => {
           setPineLabsModalOpen(false);

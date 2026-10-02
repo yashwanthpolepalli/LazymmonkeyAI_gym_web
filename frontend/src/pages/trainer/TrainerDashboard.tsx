@@ -57,7 +57,11 @@ export function TrainerDashboard() {
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}</div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{kpis.map((k) => <KpiCard key={k.id} {...k} />)}</div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpis.map((k, idx) => (
+            <KpiCard key={k.id || (k as any).title || (k as any).label || idx} {...k} />
+          ))}
+        </div>
       )}
 
 
@@ -173,22 +177,22 @@ export function TrainerDashboard() {
 
           <div className="card p-5">
             <h3 className="text-base font-bold text-navy-900 mb-4">Customer Progress</h3>
-            {loading ? <Skeleton className="h-48 w-full" /> : (() => {
-              const progressData = members.length > 0
-                ? members.map((m) => Number(m.attendance) || 0)
-                : [];
-              const progressLabels = members.length > 0
-                ? members.map((m) => (m.name || 'Member').split(' ')[0])
-                : [];
-              return (
-                <LineChart
-                  data={progressData}
-                  labels={progressLabels}
-                  height={180}
-                  color="#059669"
-                />
-              );
-            })()}
+            {loading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : members.length === 0 ? (
+              <EmptyState
+                title="No Progress Data Yet"
+                description="Attendance and performance trends will appear here once assigned members log workouts."
+                icon="trending-up"
+              />
+            ) : (
+              <LineChart
+                data={members.map((m) => Number(m.attendance) || 0)}
+                labels={members.map((m) => (m.name || 'Member').split(' ')[0])}
+                height={180}
+                color="#059669"
+              />
+            )}
           </div>
         </div>
 
