@@ -27,7 +27,7 @@ export function AIAttention({ attention, onNavigate }: AIAttentionProps) {
     {
       id: 'expiring',
       count: expiringCount,
-      title: `${expiringCount} memberships expiring within 7 days`,
+      title: `${expiringCount} ${expiringCount === 1 ? 'membership' : 'memberships'} expiring soon`,
       subtitle: 'Reach out for renewal',
       icon: 'clock',
       iconBg: 'bg-amber-500 text-white',

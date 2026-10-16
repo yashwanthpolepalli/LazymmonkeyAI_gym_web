@@ -313,12 +313,6 @@ export function LandingPage() {
               Demo
             </button>
             <button
-              onClick={() => scrollToSection('testimonials')}
-              className="hover:text-slate-950 transition-colors"
-            >
-              Success Stories
-            </button>
-            <button
               onClick={() => scrollToSection('ai-showcase')}
               className="hover:text-slate-950 transition-colors"
             >
@@ -1004,79 +998,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ─────────────────────────────────────────────────────────────
-          7. SUCCESS STORIES / TESTIMONIALS
-      ───────────────────────────────────────────────────────────── */}
-      <section id="testimonials" className="py-16 sm:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
-            <span className="text-xs font-black uppercase tracking-wider text-orange-600 bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
-              SUCCESS STORIES
-            </span>
-            <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-950">
-              Loved by Gym Owners Across India
-            </h2>
-            <p className="text-sm sm:text-base text-slate-600 font-medium">
-              See how gyms are growing with FIT CLUB AI.
-            </p>
-          </div>
 
-          {/* 3 Testimonials Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {[
-              {
-                name: 'Rahul Verma',
-                gym: 'PowerZone Fitness, Delhi',
-                img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&crop=faces',
-                quote: 'FIT CLUB AI has completely transformed how we manage our gym. Attendance, billing and member engagement are now so easy!'
-              },
-              {
-                name: 'Priya Sharma',
-                gym: 'FitLife Gym, Bangalore',
-                img: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&h=120&fit=crop&crop=faces',
-                quote: "The AI workout and diet plans are amazing. Our members love the personalized experience and we've improved retention by 40%."
-              },
-              {
-                name: 'Amit Khan',
-                gym: 'Muscle Hub, Mumbai',
-                img: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&h=120&fit=crop&crop=faces',
-                quote: 'The Creative Studio saves us hours. We create professional posters and offers in minutes. Highly recommended!'
-              }
-            ].map((t, idx) => (
-              <div
-                key={idx}
-                className="p-6 sm:p-7 rounded-3xl bg-slate-50/80 border border-slate-200/80 hover:border-orange-300 hover:shadow-xl transition-all duration-300 flex flex-col justify-between space-y-4"
-              >
-                {/* Profile Header */}
-                <div className="flex items-center gap-3">
-                  <img
-                    src={t.img}
-                    alt={t.name}
-                    className="w-12 h-12 rounded-full object-cover border-2 border-orange-500 shadow-sm"
-                  />
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900">{t.name}</h4>
-                    <p className="text-[11px] text-slate-500 font-semibold">{t.gym}</p>
-                    <div className="flex items-center gap-0.5 text-amber-400 mt-0.5">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quote Body */}
-                <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed italic">
-                  "{t.quote}"
-                </p>
-              </div>
-            ))}
-
-          </div>
-        </div>
-      </section>
 
       {/* ─────────────────────────────────────────────────────────────
           8. ULTRA-PREMIUM FUTURISTIC FOOTER (MATCHING DESIGN REFERENCE)

@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Topbar } from './Topbar';
 import { BottomNav } from './BottomNav';
+import { LiveAttendanceOwnerMonitor } from '@/components/attendance/LiveAttendanceOwnerMonitor';
 
 export function AppLayout() {
   return (
@@ -10,6 +11,8 @@ export function AppLayout() {
         <Outlet />
       </main>
       <BottomNav />
+      {/* Real-time Customer Attendance Bottom Popup for Gym Owner */}
+      <LiveAttendanceOwnerMonitor />
     </div>
   );
 }

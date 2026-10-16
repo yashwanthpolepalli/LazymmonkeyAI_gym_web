@@ -9,10 +9,15 @@ interface LiveGymActivityProps {
 export function LiveGymActivity({ activity }: LiveGymActivityProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const getIcon = (type: LiveActivityItem['type']) => {
+  const getIcon = (type: LiveActivityItem['type'], direction?: string) => {
+    const isOut = direction === 'CHECK_OUT' || type === 'checkout';
     switch (type) {
+      case 'checkout':
+        return { name: 'log-out', color: 'text-amber-600 bg-amber-50' };
       case 'checkin':
-        return { name: 'scan-face', color: 'text-blue-600 bg-blue-50' };
+        return isOut
+          ? { name: 'log-out', color: 'text-amber-600 bg-amber-50' }
+          : { name: 'scan-face', color: 'text-emerald-600 bg-emerald-50' };
       case 'membership':
         return { name: 'credit-card', color: 'text-purple-600 bg-purple-50' };
       case 'payment':
@@ -22,7 +27,9 @@ export function LiveGymActivity({ activity }: LiveGymActivityProps) {
       case 'workout':
         return { name: 'dumbbell', color: 'text-amber-600 bg-amber-50' };
       default:
-        return { name: 'activity', color: 'text-navy-600 bg-navy-50' };
+        return isOut
+          ? { name: 'log-out', color: 'text-amber-600 bg-amber-50' }
+          : { name: 'scan-face', color: 'text-emerald-600 bg-emerald-50' };
     }
   };
 
@@ -86,7 +93,7 @@ export function LiveGymActivity({ activity }: LiveGymActivityProps) {
             className="max-h-[392px] overflow-y-auto space-y-2 pr-1.5 scroll-smooth overscroll-contain"
           >
             {itemsToRender.map((item) => {
-              const iconMeta = getIcon(item.type);
+              const iconMeta = getIcon(item.type, item.direction);
               const initials = (item.title || 'U')
                 .split(' ')
                 .filter(Boolean)
@@ -95,15 +102,37 @@ export function LiveGymActivity({ activity }: LiveGymActivityProps) {
                 .slice(0, 2)
                 .toUpperCase() || 'U';
 
+              const isCheckOut =
+                item.direction === 'CHECK_OUT' ||
+                item.type === 'checkout' ||
+                (item.description || '').toLowerCase().includes('out');
+
+              const isAttendance =
+                item.type === 'checkin' ||
+                item.type === 'checkout' ||
+                Boolean(item.direction) ||
+                (item.description || '').toLowerCase().includes('face') ||
+                (item.description || '').toLowerCase().includes('scanner') ||
+                (item.description || '').toLowerCase().includes('gate') ||
+                (item.description || '').toLowerCase().includes('geofence');
+
               return (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-2 rounded-xl hover:bg-navy-50/70 transition-colors group border border-transparent hover:border-navy-100"
+                  className="flex items-center justify-between p-2.5 rounded-xl hover:bg-navy-50/70 transition-colors group border border-transparent hover:border-navy-100 gap-2"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="relative shrink-0">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-600 to-indigo-600 text-white font-extrabold text-xs flex items-center justify-center border border-navy-100 shadow-xs uppercase">
-                        {initials}
+                      <div className={`w-9 h-9 rounded-full ${
+                        isAttendance
+                          ? (isCheckOut ? 'bg-gradient-to-tr from-amber-600 to-rose-600' : 'bg-gradient-to-tr from-emerald-600 to-teal-600')
+                          : 'bg-gradient-to-tr from-brand-600 to-indigo-600'
+                      } text-white font-extrabold text-xs flex items-center justify-center border border-navy-100 shadow-xs uppercase overflow-hidden`}>
+                        {item.avatarUrl ? (
+                          <img src={item.avatarUrl} alt={item.title} className="w-full h-full object-cover" />
+                        ) : (
+                          initials
+                        )}
                       </div>
                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full ${iconMeta.color} flex items-center justify-center text-[9px] shadow-2xs border border-white`}>
                         <Icon name={iconMeta.name} size={10} />
@@ -118,7 +147,24 @@ export function LiveGymActivity({ activity }: LiveGymActivityProps) {
                     </div>
                   </div>
 
-                  <span className="text-[10px] font-bold text-navy-400 shrink-0 ml-2">{item.time}</span>
+                  <div className="flex items-center gap-2.5 shrink-0 ml-2">
+                    {/* Dynamic Check In / Check Out Badge */}
+                    {isAttendance ? (
+                      isCheckOut ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          CHECK OUT
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          CHECK IN
+                        </span>
+                      )
+                    ) : null}
+
+                    <span className="text-[10px] font-bold text-navy-400 font-mono">{item.time}</span>
+                  </div>
                 </div>
               );
             })}

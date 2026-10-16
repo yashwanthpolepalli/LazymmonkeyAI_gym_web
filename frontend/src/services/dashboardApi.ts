@@ -7,15 +7,25 @@ export const dashboardApi = {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const res = await apiClient.get<any>(`/dashboard/owner${query}`);
 
-    const liveActivity = (res?.recentCheckIns || []).map((item: any) => ({
-      id: item.eventId || `act-${Math.random()}`,
-      type: item.method && item.method.toLowerCase().includes('face') ? 'checkin' : 'payment',
-      title: item.customerName || 'Gym Member',
-      description: `${item.zone || 'Entrance'} · ${item.method || 'Check-in'}`,
-      time: item.timestamp ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
-    }));
+    const liveActivity = (res?.recentCheckIns || []).map((item: any) => {
+      const isCheckOut = String(item.direction || '').toUpperCase().includes('OUT') || String(item.method || '').toLowerCase().includes('out');
+      const dir: 'CHECK_IN' | 'CHECK_OUT' = isCheckOut ? 'CHECK_OUT' : 'CHECK_IN';
+      return {
+        id: item.eventId || `act-${Math.random()}`,
+        type: isCheckOut ? ('checkout' as const) : ('checkin' as const),
+        direction: dir,
+        title: item.customerName || 'Gym Member',
+        avatarUrl: item.avatarUrl || null,
+        description: `${item.zone || 'Main Gate'} · ${item.method || (isCheckOut ? 'Check-out' : 'Check-in')}`,
+        time: item.timestamp ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+        method: item.method,
+        zone: item.zone,
+      };
+    });
 
-    const totalMembers = (res?.radarHealthy || 0) + (res?.radarAttention || 0) + (res?.radarHighRisk || 0);
+    const totalMembers = res?.totalMembersCount ?? ((res?.radarHealthy || 0) + (res?.radarAttention || 0) + (res?.radarHighRisk || 0));
+    const activeMembers = res?.activeMembersCount ?? res?.radarHealthy ?? 0;
+    const expiringSoon = res?.expiringSoonCount ?? 0;
 
     return {
       gym: {
@@ -25,21 +35,21 @@ export const dashboardApi = {
       summary: {
         total_members: totalMembers,
         checkins_today: res?.todayAttendance ?? 0,
-        active_memberships: res?.radarHealthy ?? 0,
-        expiring_soon: res?.expiringSoonCount ?? 0,
+        active_memberships: activeMembers,
+        expiring_soon: expiringSoon,
         today_revenue: res?.todayRevenue ?? 0,
       },
       attention: {
         churn_risk: res?.atRiskCount ?? 0,
-        expiring_memberships: res?.expiringSoonCount ?? 0,
+        expiring_memberships: expiringSoon,
         pending_renewals: res?.dueMembersCount ?? 0,
         lead_followups: 0,
       },
       live_activity: liveActivity,
       membership_health: {
-        active: res?.radarHealthy ?? 0,
-        expiring: res?.expiringSoonCount ?? 0,
-        expired: 0,
+        active: activeMembers,
+        expiring: expiringSoon,
+        expired: Math.max(0, totalMembers - activeMembers),
         inactive: res?.radarHighRisk ?? 0,
       },
       revenue: {

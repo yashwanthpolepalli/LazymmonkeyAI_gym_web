@@ -207,6 +207,17 @@ export function AttendancePage() {
                     <div className="text-sm font-semibold text-navy-900 truncate">{r.customer_name}</div>
                     <div className="text-xs text-navy-400 truncate">{r.device_name}</div>
                   </div>
+                  {String(r.direction || '').toUpperCase().includes('OUT') ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      CHECK OUT
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      CHECK IN
+                    </span>
+                  )}
                   <Badge variant={eventBadgeVariant(r.event_type)}>
                     {eventBadgeLabel(r.event_type, r.direction)}
                   </Badge>

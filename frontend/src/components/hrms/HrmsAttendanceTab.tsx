@@ -392,10 +392,11 @@ export function HrmsAttendanceTab({ attendanceLogs }: HrmsAttendanceTabProps) {
                             <span>{methodBadge.label}</span>
                           </span>
                           <span className={cn(
-                            'px-2 py-0.5 rounded text-[10px] font-extrabold border',
-                            isCheckOut ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs',
+                            isCheckOut ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-300'
                           )}>
-                            {isCheckOut ? 'OUT' : 'IN'}
+                            <span className={cn('w-1.5 h-1.5 rounded-full', isCheckOut ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse')} />
+                            {isCheckOut ? 'CHECK OUT' : 'CHECK IN'}
                           </span>
                         </div>
                         <span className="text-[11px] font-mono font-bold text-navy-700">

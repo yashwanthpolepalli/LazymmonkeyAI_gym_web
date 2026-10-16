@@ -29,11 +29,15 @@ export interface RevenueBreakdownData {
 
 export interface LiveActivityItem {
   id: string;
-  type: 'checkin' | 'membership' | 'payment' | 'body_scan' | 'workout' | 'lead';
+  type: 'checkin' | 'checkout' | 'membership' | 'payment' | 'body_scan' | 'workout' | 'lead';
   title: string;
   description: string;
   time: string;
   member?: string;
+  direction?: 'CHECK_IN' | 'CHECK_OUT';
+  avatarUrl?: string | null;
+  method?: string;
+  zone?: string;
 }
 
 export interface TopTrainerItem {

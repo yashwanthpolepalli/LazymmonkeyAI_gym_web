@@ -92,6 +92,56 @@ export function HrmsPayrollTab({ onSuccessToast }: HrmsPayrollTabProps) {
     stamp_text: '[Digitally Signed & Verified Document]'
   });
 
+  const [previewEmpId, setPreviewEmpId] = useState<string>('');
+
+  const activePreviewEmp = useMemo(() => {
+    if (previewEmpId) {
+      return employees.find(e => e.id === previewEmpId) || employees[0] || null;
+    }
+    return employees[0] || null;
+  }, [employees, previewEmpId]);
+
+  const previewCalculations = useMemo(() => {
+    if (!activePreviewEmp) {
+      return null;
+    }
+
+    const name = activePreviewEmp.full_name || `${activePreviewEmp.first_name || ''} ${activePreviewEmp.last_name || ''}`.trim() || '';
+    const code = activePreviewEmp.code || '';
+    const dept = activePreviewEmp.department || '';
+    const designation = activePreviewEmp.designation || '';
+
+    const struct = structures.find(s => s.employee_id === activePreviewEmp.id);
+    const baseSal = Number(struct?.basic_salary || activePreviewEmp.salary || 0);
+    const basic = struct?.basic_salary ? Number(struct.basic_salary) : Math.round(baseSal * 0.5);
+    const hra = struct?.hra ? Number(struct.hra) : Math.round(basic * 0.4);
+    const allowance = struct?.other_allowances ? Number(struct.other_allowances) : 0;
+    const gross = basic + hra + allowance;
+
+    const pf = struct?.pf_deduction ? Number(struct.pf_deduction) : (basic > 0 ? Math.round(basic * 0.12) : 0);
+    const esi = struct?.esi_deduction ? Number(struct.esi_deduction) : 0;
+    const tds = struct?.tds_deduction ? Number(struct.tds_deduction) : 0;
+    const otherDed = Number(struct?.other_deductions || 0);
+    const totalDed = pf + esi + tds + otherDed;
+    const netPay = gross - totalDed;
+
+    return {
+      name,
+      code,
+      dept,
+      designation,
+      basic,
+      hra,
+      allowance,
+      gross,
+      pf,
+      esi,
+      tds,
+      totalDed,
+      netPay,
+    };
+  }, [activePreviewEmp, structures]);
+
   // 6. Loans, Advances, Bonuses, Commissions
   const [loans, setLoans] = useState<any[]>([]);
   const [advances, setAdvances] = useState<any[]>([]);
@@ -1200,92 +1250,124 @@ export function HrmsPayrollTab({ onSuccessToast }: HrmsPayrollTabProps) {
             <div className="lg:col-span-7 bg-slate-900/5 border border-slate-200 rounded-3xl p-6 flex flex-col items-center">
               <div className="w-full flex items-center justify-between text-xs font-bold text-slate-500 mb-3 px-2">
                 <span className="flex items-center gap-1.5"><Eye size={14} /> Live Document Preview (A4 Format)</span>
-                <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px]">A4 595 x 842 pt</span>
+                <div className="flex items-center gap-2">
+                  {employees.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400 font-normal">Preview for:</span>
+                      <select
+                        value={previewEmpId || activePreviewEmp?.id || ''}
+                        onChange={(e) => setPreviewEmpId(e.target.value)}
+                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 outline-none focus:ring-1 focus:ring-purple-500"
+                      >
+                        {employees.map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.full_name || `${emp.first_name} ${emp.last_name}`} ({emp.code || 'EMP'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px]">A4 595 x 842 pt</span>
+                </div>
               </div>
 
               {/* Rendered A4 Payslip Paper Card */}
-              <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200 p-6 space-y-4 text-xs font-sans text-slate-800">
-                {/* Header with Custom Theme Color */}
-                <div className="flex items-center justify-between pb-3 border-b-2" style={{ borderColor: customizerForm.theme_color }}>
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-base shadow-sm"
-                      style={{ backgroundColor: customizerForm.theme_color }}
-                    >
-                      FC
+              {!previewCalculations ? (
+                <div className="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                    <FileText size={24} />
+                  </div>
+                  <div className="font-bold text-slate-700 text-sm">No Employee Selected</div>
+                  <div className="text-xs text-slate-400 max-w-xs">
+                    Add employees to HRMS to preview live payslip disbursals.
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200 p-6 space-y-4 text-xs font-sans text-slate-800">
+                  {/* Header with Custom Theme Color */}
+                  <div className="flex items-center justify-between pb-3 border-b-2" style={{ borderColor: customizerForm.theme_color }}>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-base shadow-sm"
+                        style={{ backgroundColor: customizerForm.theme_color }}
+                      >
+                        FC
+                      </div>
+                      <div>
+                        <div className="font-black text-slate-900 text-sm">FIT CLUB ENTERPRISE</div>
+                        <div className="text-[10px] text-slate-400">100 Innovation Boulevard, Tech District</div>
+                      </div>
                     </div>
+                    <div className="text-right">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black text-white" style={{ backgroundColor: customizerForm.theme_color }}>
+                        OFFICIAL PAYSLIP
+                      </span>
+                      <div className="text-[10px] text-slate-400 mt-1 font-mono">
+                        Period: {String(selectedMonthIndex).padStart(2, '0')}/{selectedYear}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center font-bold text-[11px] uppercase tracking-wider py-1 bg-slate-50 rounded-lg text-slate-700">
+                    {customizerForm.title_text}
+                  </div>
+
+                  {/* Employee Meta Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px] p-2 bg-slate-50/50 rounded-xl border border-slate-100">
+                    <div><span className="text-slate-400">Employee:</span> <span className="font-bold">{previewCalculations.name}</span></div>
+                    <div><span className="text-slate-400">EMP Code:</span> <span className="font-mono font-bold">{previewCalculations.code}</span></div>
+                    <div><span className="text-slate-400">Department:</span> <span className="font-semibold">{previewCalculations.dept}</span></div>
+                    <div><span className="text-slate-400">Designation:</span> <span className="font-semibold">{previewCalculations.designation}</span></div>
+                  </div>
+
+                  {/* Earnings & Deductions Tables */}
+                  <div className="grid grid-cols-2 gap-3 text-[11px]">
+                    {/* Earnings */}
+                    <div className="border border-slate-100 rounded-xl overflow-hidden">
+                      <div className="bg-slate-100/70 px-3 py-1.5 font-bold text-slate-700">EARNINGS</div>
+                      <div className="p-2.5 space-y-1.5 font-mono">
+                        <div className="flex justify-between"><span>Basic Pay</span><span className="font-bold">₹{previewCalculations.basic.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between"><span>HRA (40%)</span><span>₹{previewCalculations.hra.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between"><span>Special Allow.</span><span>₹{previewCalculations.allowance.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between pt-1 border-t border-slate-100 font-bold text-slate-900">
+                          <span>Gross Earnings</span><span>₹{previewCalculations.gross.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Deductions */}
+                    <div className="border border-slate-100 rounded-xl overflow-hidden">
+                      <div className="bg-slate-100/70 px-3 py-1.5 font-bold text-rose-700">DEDUCTIONS</div>
+                      <div className="p-2.5 space-y-1.5 font-mono">
+                        <div className="flex justify-between"><span>PF (12%)</span><span>₹{previewCalculations.pf.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between"><span>ESI</span><span>₹{previewCalculations.esi.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between"><span>TDS Tax</span><span>₹{previewCalculations.tds.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between pt-1 border-t border-slate-100 font-bold text-rose-600">
+                          <span>Total Ded.</span><span>-₹{previewCalculations.totalDed.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Net Take-Home Hero Card */}
+                  <div
+                    className="p-3.5 rounded-xl text-white flex items-center justify-between shadow-md"
+                    style={{ backgroundColor: customizerForm.theme_color }}
+                  >
                     <div>
-                      <div className="font-black text-slate-900 text-sm">FIT CLUB ENTERPRISE</div>
-                      <div className="text-[10px] text-slate-400">100 Innovation Boulevard, Tech District</div>
+                      <div className="text-[10px] uppercase font-bold tracking-wider opacity-80">NET DISBURSED TAKE-HOME</div>
+                      <div className="text-lg font-black font-mono">₹{previewCalculations.netPay.toLocaleString('en-IN')}.00</div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-black text-white" style={{ backgroundColor: customizerForm.theme_color }}>
-                      OFFICIAL PAYSLIP
-                    </span>
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono">Period: 09/2026</div>
-                  </div>
-                </div>
-
-                <div className="text-center font-bold text-[11px] uppercase tracking-wider py-1 bg-slate-50 rounded-lg text-slate-700">
-                  {customizerForm.title_text}
-                </div>
-
-                {/* Employee Meta Grid */}
-                <div className="grid grid-cols-2 gap-2 text-[11px] p-2 bg-slate-50/50 rounded-xl border border-slate-100">
-                  <div><span className="text-slate-400">Employee:</span> <span className="font-bold">Rahul Sharma</span></div>
-                  <div><span className="text-slate-400">EMP Code:</span> <span className="font-mono font-bold">EMP-0001</span></div>
-                  <div><span className="text-slate-400">Department:</span> <span className="font-semibold">Fitness & Training</span></div>
-                  <div><span className="text-slate-400">Designation:</span> <span className="font-semibold">Senior Trainer</span></div>
-                </div>
-
-                {/* Earnings & Deductions Tables */}
-                <div className="grid grid-cols-2 gap-3 text-[11px]">
-                  {/* Earnings */}
-                  <div className="border border-slate-100 rounded-xl overflow-hidden">
-                    <div className="bg-slate-100/70 px-3 py-1.5 font-bold text-slate-700">EARNINGS</div>
-                    <div className="p-2.5 space-y-1.5 font-mono">
-                      <div className="flex justify-between"><span>Basic Pay</span><span className="font-bold">₹25,000</span></div>
-                      <div className="flex justify-between"><span>HRA (40%)</span><span>₹10,000</span></div>
-                      <div className="flex justify-between"><span>Special Allow.</span><span>₹2,500</span></div>
-                      <div className="flex justify-between pt-1 border-t border-slate-100 font-bold text-slate-900">
-                        <span>Gross Earnings</span><span>₹37,500</span>
-                      </div>
-                    </div>
+                    <CheckCircle2 size={24} className="opacity-90" />
                   </div>
 
-                  {/* Deductions */}
-                  <div className="border border-slate-100 rounded-xl overflow-hidden">
-                    <div className="bg-slate-100/70 px-3 py-1.5 font-bold text-rose-700">DEDUCTIONS</div>
-                    <div className="p-2.5 space-y-1.5 font-mono">
-                      <div className="flex justify-between"><span>PF (12%)</span><span>₹1,800</span></div>
-                      <div className="flex justify-between"><span>ESI (0.75%)</span><span>₹0</span></div>
-                      <div className="flex justify-between"><span>TDS Tax</span><span>₹500</span></div>
-                      <div className="flex justify-between pt-1 border-t border-slate-100 font-bold text-rose-600">
-                        <span>Total Ded.</span><span>-₹2,300</span>
-                      </div>
-                    </div>
+                  {/* Footer Signatures */}
+                  <div className="pt-2 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100">
+                    <div>{customizerForm.stamp_text}</div>
+                    <div className="text-right font-bold text-slate-600">{customizerForm.signatory_label}</div>
                   </div>
                 </div>
-
-                {/* Net Take-Home Hero Card */}
-                <div
-                  className="p-3.5 rounded-xl text-white flex items-center justify-between shadow-md"
-                  style={{ backgroundColor: customizerForm.theme_color }}
-                >
-                  <div>
-                    <div className="text-[10px] uppercase font-bold tracking-wider opacity-80">NET DISBURSED TAKE-HOME</div>
-                    <div className="text-lg font-black font-mono">₹35,200.00</div>
-                  </div>
-                  <CheckCircle2 size={24} className="opacity-90" />
-                </div>
-
-                {/* Footer Signatures */}
-                <div className="pt-2 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100">
-                  <div>{customizerForm.stamp_text}</div>
-                  <div className="text-right font-bold text-slate-600">{customizerForm.signatory_label}</div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

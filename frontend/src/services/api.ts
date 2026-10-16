@@ -128,6 +128,12 @@ export const api = {
       if (physical_only) params.set('physical_only', 'true');
       return apiClient.get(`/biometrics/recent?${params.toString()}`);
     },
+    latestCustomerPunch: (sinceTimestamp?: string): Promise<{ has_new: boolean; punch: any }> => {
+      const params = new URLSearchParams();
+      if (sinceTimestamp) params.set('since_timestamp', sinceTimestamp);
+      const q = params.toString();
+      return apiClient.get(`/biometrics/latest-customer-punch${q ? `?${q}` : ''}`);
+    },
     devices: (location = ''): Promise<any> => apiClient.get(`/biometrics/devices${location ? `?location=${encodeURIComponent(location)}` : ''}`),
     registerDevice: (payload: any): Promise<any> => apiClient.post('/biometrics/devices', payload),
     checkIn: (payload: any): Promise<any> => apiClient.post('/biometrics/check-in', payload),
