@@ -360,18 +360,33 @@ class DashboardService:
         pt_zone_count = len([l for l in today_logs if "pt" in (getattr(l, "location", None) or l.device_name or "").lower() or "personal" in (getattr(l, "location", None) or l.device_name or "").lower()])
 
         all_customers = cust_query.all()
+        owner_cust_ids = [c.id for c in all_customers]
 
+        # Scope memberships strictly to the owner's customer base
+        if owner_cust_ids:
+            mem_query = mem_query.filter(Membership.customer_id.in_(owner_cust_ids))
+        else:
+            mem_query = mem_query.filter(Membership.id == "__no_matching_members__")
+
+        # Active memberships (unexpired)
+        active_mems = mem_query.filter(
+            Membership.status == "ACTIVE",
+            Membership.expiry_date >= now
+        ).all()
+        active_memberships_count = len(set(m.customer_id for m in active_mems if m.customer_id))
+
+        # Memberships expiring soon (within next 30 days) - deduplicated by customer
         thirty_days_later = now + datetime.timedelta(days=30)
         expiring_memberships = mem_query.filter(
             Membership.expiry_date >= now,
             Membership.expiry_date <= thirty_days_later,
             Membership.status == "ACTIVE"
         ).all()
-        expiring_soon_count = len(expiring_memberships)
+        expiring_soon_count = len(set(m.customer_id for m in expiring_memberships if m.customer_id))
 
         due_memberships = mem_query.filter(Membership.due_amount > 0).all()
-        outstanding_dues = float(sum(m.due_amount for m in due_memberships))
-        due_members_count = len(due_memberships)
+        outstanding_dues = float(sum(m.due_amount for m in due_memberships if m.due_amount))
+        due_members_count = len(set(m.customer_id for m in due_memberships if m.customer_id))
 
         # Optimized Bulk Attendance Risk Aggregation (Single SQL Query instead of N+1)
         thirty_days_ago = now - datetime.timedelta(days=30)
@@ -399,10 +414,36 @@ class DashboardService:
             else:
                 healthy_count += 1
 
-        recent_logs = log_query.order_by(BiometricLog.timestamp.desc()).limit(10).all()
+        recent_logs = log_query.order_by(BiometricLog.timestamp.desc()).limit(15).all()
         recent_checkins = []
         for log in recent_logs:
-            cust = db.query(Customer).filter(Customer.id == log.customer_id).first() if log.customer_id else None
+            meta = log.meta_data or {}
+            cust = None
+            if log.customer_id:
+                cust = db.query(Customer).filter(
+                    (Customer.id == log.customer_id) | (Customer.user_id == log.customer_id)
+                ).first()
+            if not cust:
+                user_id_val = meta.get("user_id")
+                if user_id_val:
+                    cust = db.query(Customer).filter(
+                        (Customer.id == user_id_val) | (Customer.user_id == user_id_val)
+                    ).first()
+
+            from src.models.user import User
+            matched_user = db.query(User).filter(User.id == log.customer_id).first() if log.customer_id else None
+            resolved_name = (
+                (cust.full_name if cust else None)
+                or meta.get("customer_name")
+                or meta.get("user_name")
+                or (matched_user.name if matched_user else None)
+                or (f"Member ({log.customer_id[:6]})" if log.customer_id else "Gym Member")
+            )
+
+            raw_dir = str(log.direction or meta.get("direction") or meta.get("action") or "CHECK_IN").upper()
+            direction_val = "CHECK_OUT" if "OUT" in raw_dir else "CHECK_IN"
+
+            avatar_val = (cust.profile_image if (cust and cust.profile_image) else None) or meta.get("avatar") or meta.get("profile_image")
 
             member_mem = None
             days_remaining = None
@@ -425,11 +466,12 @@ class DashboardService:
 
             recent_checkins.append({
                 "eventId": log.id,
-                "customerId": log.customer_id or None,
-                "customerName": cust.full_name if cust else None,
-                "avatarUrl": cust.profile_image if cust else None,
-                "method": log.device_type or log.event_type or None,
-                "zone": getattr(log, "location", None) or log.device_name or log.device_id or None,
+                "customerId": (cust.id if cust else log.customer_id) or None,
+                "customerName": resolved_name,
+                "avatarUrl": avatar_val,
+                "direction": direction_val,
+                "method": log.device_type or log.event_type or meta.get("method") or "Face Scanner",
+                "zone": getattr(log, "location", None) or log.device_name or log.device_id or meta.get("branch") or "Main Gate",
                 "timestamp": log.timestamp.isoformat() if log.timestamp else now.isoformat(),
                 "fitnessScore": cust.fitness_score if cust and cust.fitness_score is not None else None,
                 "attendanceRate": attendance_rate,
@@ -480,6 +522,8 @@ class DashboardService:
         return {
             "gymName": gym_ctx.get("gym_name", None),
             "branchName": gym_ctx.get("branch_name", None),
+            "totalMembersCount": len(all_customers),
+            "activeMembersCount": active_memberships_count,
             "currentlyInside": currently_inside,
             "todayAttendance": today_attendance,
             "todayRevenue": today_revenue,

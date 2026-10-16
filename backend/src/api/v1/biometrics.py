@@ -108,6 +108,16 @@ def recent_biometrics(
     return BiometricService.get_recent_checkins(db, limit, role_filter=role, physical_only=physical_only)
 
 
+@router.get("/latest-customer-punch")
+def get_latest_customer_punch(
+    since_timestamp: Optional[str] = Query(None, description="ISO timestamp to fetch punches strictly after"),
+    db: Session = Depends(get_db),
+    _auth: Any = Depends(require_staff_user),
+):
+    """Returns the most recent customer attendance checkin/checkout for real-time owner notifications."""
+    return BiometricService.get_latest_customer_punch(db, since_timestamp=since_timestamp)
+
+
 @router.post("/check-in")
 def manual_checkin(payload: BiometricCheckinCreate, db: Session = Depends(get_db), _auth: Any = Depends(require_staff_user)):
     return BiometricService.record_checkin(

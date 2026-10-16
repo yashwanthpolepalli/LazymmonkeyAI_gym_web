@@ -134,10 +134,15 @@ class BiometricService:
             logs = [l for l in logs if _is_physical_log(l)][:limit]
 
         customer_ids = {x.customer_id for x in logs if x.customer_id}
-        customers = {
-            c.id: c
-            for c in (db.query(Customer).filter(Customer.id.in_(customer_ids)).all() if customer_ids else [])
-        }
+        customers = {}
+        if customer_ids:
+            found_custs = db.query(Customer).filter(
+                (Customer.id.in_(customer_ids)) | (Customer.user_id.in_(customer_ids))
+            ).all()
+            for c in found_custs:
+                customers[c.id] = c
+                if c.user_id:
+                    customers[c.user_id] = c
 
         from src.models.user import User
         users = {
@@ -156,39 +161,175 @@ class BiometricService:
             for e in (db.query(Employee).filter(Employee.id.in_(customer_ids)).all() if customer_ids else [])
         }
 
+        # Query membership records for found customers
+        memberships_by_cust = {}
+        if customers:
+            try:
+                from src.models.membership import Membership
+                all_cids = list({c.id for c in customers.values()})
+                mems = db.query(Membership).filter(
+                    Membership.customer_id.in_(all_cids)
+                ).order_by(Membership.created_at.desc()).all()
+                for m in mems:
+                    if m.customer_id not in memberships_by_cust:
+                        memberships_by_cust[m.customer_id] = m
+            except Exception as e:
+                logger.warning(f"Error querying customer memberships in biometric service: {e}")
+
+        # Query total visits (check-ins) count
+        visit_counts = {}
+        if customers:
+            try:
+                from sqlalchemy import func
+                all_cids = list({c.id for c in customers.values()})
+                counts = (
+                    db.query(BiometricLog.customer_id, func.count(BiometricLog.id))
+                    .filter(BiometricLog.customer_id.in_(all_cids), BiometricLog.direction == "CHECK_IN")
+                    .group_by(BiometricLog.customer_id)
+                    .all()
+                )
+                for cid, cnt in counts:
+                    visit_counts[cid] = cnt
+            except Exception as e:
+                logger.warning(f"Error counting customer visits in biometric service: {e}")
+
         result = []
         for log in logs:
             meta = log.meta_data or {}
             raw_role = (log.user_role or meta.get("user_role") or "CUSTOMER").upper()
 
+            cust = customers.get(log.customer_id)
+            if not cust and log.customer_id in users:
+                user_obj = users.get(log.customer_id)
+                for c in customers.values():
+                    if c.user_id == user_obj.id:
+                        cust = c
+                        break
+
+            trainer_obj = trainers.get(log.customer_id)
+            emp_obj = employees.get(log.customer_id)
+            user_obj = users.get(log.customer_id)
+
             resolved_name = (
                 meta.get("customer_name")
+                or (cust.full_name if cust else None)
                 or meta.get("employee_name")
                 or meta.get("user_name")
-                or (customers.get(log.customer_id).full_name if log.customer_id in customers else None)
-                or (trainers.get(log.customer_id).full_name if log.customer_id in trainers else None)
-                or (users.get(log.customer_id).full_name if log.customer_id in users else None)
-                or (f"{employees.get(log.customer_id).first_name} {employees.get(log.customer_id).last_name or ''}".strip() if log.customer_id in employees else None)
+                or (trainer_obj.full_name if trainer_obj else None)
+                or (user_obj.full_name if user_obj else None)
+                or (f"{emp_obj.first_name} {emp_obj.last_name or ''}".strip() if emp_obj else None)
                 or (f"Member ({log.customer_id[:6]})" if log.customer_id else "Gym Member")
             )
 
+            # Profile photo resolution
+            avatar = (
+                (cust.profile_image if cust and cust.profile_image else None)
+                or meta.get("avatar")
+                or meta.get("profile_image")
+                or (trainer_obj.profile_image if trainer_obj and trainer_obj.profile_image else None)
+            )
+
+            # Phone & Email resolution
+            phone = (
+                (cust.phone if cust and cust.phone else None)
+                or meta.get("phone")
+                or (trainer_obj.phone if trainer_obj and trainer_obj.phone else None)
+                or (emp_obj.phone if emp_obj and emp_obj.phone else None)
+            )
+            email = (
+                (cust.email if cust and cust.email else None)
+                or meta.get("email")
+                or (trainer_obj.email if trainer_obj and trainer_obj.email else None)
+                or (emp_obj.email if emp_obj and emp_obj.email else None)
+                or (user_obj.email if user_obj and user_obj.email else None)
+            )
+
+            # Membership resolution
+            mem = memberships_by_cust.get(cust.id) if cust else (memberships_by_cust.get(log.customer_id) if log.customer_id in memberships_by_cust else None)
+            mem_plan = "Standard Membership"
+            mem_status = "Active"
+            mem_expiry = None
+            due_amount = 0.0
+
+            if mem:
+                mem_plan = mem.plan_name or mem.plan_type or "Premium Plan"
+                mem_status = (mem.status or "Active").upper()
+                due_amount = float(mem.due_amount or 0.0)
+                if mem.expiry_date:
+                    mem_expiry = mem.expiry_date.strftime("%d %b %Y")
+            elif raw_role != "CUSTOMER":
+                mem_plan = "Staff / Trainer"
+                mem_status = "ACTIVE"
+            elif cust and cust.status:
+                mem_status = cust.status.upper()
+
+            total_visits = (visit_counts.get(cust.id) if cust else None) or visit_counts.get(log.customer_id) or 1
+
+            # Confidence score formatting
+            raw_conf = log.confidence_score
+            if raw_conf is None:
+                raw_conf = 0.985 if log.event_type in ["FACE_SCAN", "FACE_RECOGNITION"] else 1.0
+
             result.append({
                 "id": log.id,
-                "customer_id": log.customer_id,
+                "customer_id": (cust.id if cust else log.customer_id) or "",
                 "customer_name": resolved_name,
                 "person_name": resolved_name,
                 "user_role": raw_role,
+                "avatar": avatar,
+                "phone": phone,
+                "email": email,
+                "gender": cust.gender if cust else None,
+                "age": cust.age if cust else None,
+                "weight": cust.weight if cust else None,
+                "height": cust.height if cust else None,
+                "bmi": cust.bmi if cust else None,
+                "goal": cust.goal if (cust and cust.goal) else (meta.get("goal") or "General Fitness"),
+                "fitness_level": cust.fitness_level if (cust and cust.fitness_level) else "Active Member",
+                "membership_plan": mem_plan,
+                "membership_status": mem_status,
+                "membership_expiry": mem_expiry,
+                "due_amount": due_amount,
+                "total_visits": total_visits,
                 "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                "event_type": log.event_type,
+                "event_type": log.event_type or "FACE_SCAN",
                 "device_id": log.device_id,
-                "device_name": log.device_name or meta.get("branch") or "Main Gate",
+                "device_name": log.device_name or meta.get("branch") or "Mobile Face Scanner",
                 "device_type": log.device_type,
                 "direction": log.direction or "CHECK_IN",
                 "status": log.status or "SUCCESS",
-                "confidence_score": log.confidence_score,
+                "confidence_score": round(float(raw_conf), 4),
+                "confidence_percentage": f"{round(float(raw_conf) * 100, 1)}%",
+                "branch": (cust.primary_gym_location if cust and cust.primary_gym_location else None) or meta.get("branch") or log.device_name or "Main Branch",
+                "notes": meta.get("note") or meta.get("notes") or f"Marked via {log.event_type or 'Mobile'}",
                 "meta_data": log.meta_data,
             })
         return result
+
+    @staticmethod
+    def get_latest_customer_punch(db: Session, since_timestamp: Optional[str] = None) -> Dict[str, Any]:
+        """Returns the most recent customer punch, optionally strictly after since_timestamp."""
+        query = db.query(BiometricLog).filter(BiometricLog.user_role == "CUSTOMER")
+
+        if since_timestamp:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(since_timestamp.replace("Z", "+00:00"))
+                query = query.filter(BiometricLog.timestamp > dt)
+            except Exception:
+                pass
+
+        log = query.order_by(BiometricLog.timestamp.desc()).first()
+        if not log:
+            return {"has_new": False, "punch": None}
+
+        # Format using get_recent_checkins
+        enriched = BiometricService.get_recent_checkins(db, limit=1, role_filter="CUSTOMER")
+        match = next((item for item in enriched if item.get("id") == log.id), None)
+        return {
+            "has_new": True if match else False,
+            "punch": match
+        }
 
     @staticmethod
     def get_attendance_analytics(db: Session, role_filter: Optional[str] = None, physical_only: bool = False) -> Dict[str, Any]:

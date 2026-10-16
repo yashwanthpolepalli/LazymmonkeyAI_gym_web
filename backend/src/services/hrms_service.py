@@ -789,6 +789,12 @@ class HrmsService:
                 meta_data={
                     "user_id": employee_id,
                     "user_name": display_name,
+                    "customer_name": cust.full_name if (locals().get("cust") and cust) else display_name,
+                    "avatar": cust.profile_image if (locals().get("cust") and cust and cust.profile_image) else None,
+                    "phone": cust.phone if (locals().get("cust") and cust) else None,
+                    "email": cust.email if (locals().get("cust") and cust) else None,
+                    "goal": cust.goal if (locals().get("cust") and cust) else None,
+                    "note": punch_notes,
                     "distance_meters": distance,
                     "within_perimeter": is_within_geofence,
                     "latitude": latitude,
