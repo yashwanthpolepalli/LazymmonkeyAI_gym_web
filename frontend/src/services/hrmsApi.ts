@@ -336,6 +336,10 @@ export interface PunchResponse {
   is_within_geofence?: boolean;
   method?: string;
   employee_name?: string;
+  membership_plan?: string;
+  membership_expiry?: string | null;
+  plan_validity?: string;
+  days_remaining?: number | null;
 }
 
 export const hrmsApi = {

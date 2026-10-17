@@ -118,8 +118,8 @@ export const customerApi = {
   registerFace: (payload: { face_image_base64: string }): Promise<{ status: string; message: string; is_enrolled: boolean; face_image?: string }> =>
     apiClient.post('/customer/face/register', payload),
 
-  verifyFace: (payload: { live_image_base64: string; action: 'CHECK_IN' | 'CHECK_OUT' }): Promise<{ status: string; match: boolean; confidence: number; confidence_percentage: string; message: string; action: string; time: string; punch?: any }> =>
-    apiClient.post('/customer/face/verify', payload),
+  verifyFace: (payload: { live_image_base64: string; action: 'CHECK_IN' | 'CHECK_OUT' }): Promise<CustomerFaceVerifyResponse> =>
+    apiClient.post<CustomerFaceVerifyResponse>('/customer/face/verify', payload),
 
   // Gym Slot Bookings
   bookGymSlot: (payload: { booking_date: string; start_time: string; end_time: string; workout_types: string[]; branch?: string; notes?: string }): Promise<GymSlotBookingItem> =>
@@ -160,5 +160,21 @@ export interface GymSlotBookingItem {
   check_in_time?: string;
   notes?: string;
   created_at?: string;
+}
+
+export interface CustomerFaceVerifyResponse {
+  status: string;
+  match: boolean;
+  confidence: number;
+  confidence_percentage: string;
+  message: string;
+  action: string;
+  time: string;
+  branch?: string;
+  membership_plan?: string;
+  membership_expiry?: string | null;
+  plan_validity?: string;
+  days_remaining?: number | null;
+  punch?: any;
 }
 

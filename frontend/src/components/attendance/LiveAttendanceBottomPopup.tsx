@@ -43,6 +43,8 @@ export interface CustomerPunchData {
   membership_plan?: string | null;
   membership_status?: string | null;
   membership_expiry?: string | null;
+  plan_validity?: string | null;
+  days_remaining?: number | null;
   due_amount?: number;
   total_visits?: number;
   timestamp?: string;
@@ -446,26 +448,62 @@ export function LiveAttendanceBottomPopup({
                     </a>
                   )}
                 </div>
+
+                {/* Prominent Plan & Validity Highlight Badges */}
+                <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-500/25 border border-purple-400/40 text-purple-200 text-xs font-bold shadow-sm">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                    <span className="text-slate-300 font-normal">Plan:</span>
+                    <span className="text-white font-extrabold">{currentPunch.membership_plan || 'Standard Membership'}</span>
+                  </div>
+
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border text-xs font-bold shadow-sm ${
+                    currentPunch.days_remaining !== undefined && currentPunch.days_remaining !== null && currentPunch.days_remaining <= 0
+                      ? 'bg-rose-500/25 text-rose-300 border-rose-400/50'
+                      : currentPunch.days_remaining !== undefined && currentPunch.days_remaining !== null && currentPunch.days_remaining <= 7
+                      ? 'bg-amber-500/25 text-amber-300 border-amber-400/50'
+                      : 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50'
+                  }`}>
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span className="text-slate-300 font-normal">Validity:</span>
+                    <span className="font-extrabold">
+                      {currentPunch.plan_validity || (currentPunch.membership_expiry ? `Valid till ${currentPunch.membership_expiry}` : 'Active Plan')}
+                    </span>
+                    {currentPunch.days_remaining !== undefined && currentPunch.days_remaining !== null && (
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${
+                        currentPunch.days_remaining <= 0
+                          ? 'bg-rose-500/40 text-rose-200'
+                          : currentPunch.days_remaining <= 7
+                          ? 'bg-amber-500/40 text-amber-200'
+                          : 'bg-emerald-500/40 text-emerald-200'
+                      }`}>
+                        {currentPunch.days_remaining <= 0 ? 'Expired' : `${currentPunch.days_remaining}d Left`}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Multi-Color Rich Grid Badges (The "All Customer Data" Requirement) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-3 border-t border-white/10 text-xs">
-            {/* 1. Membership Plan & Status (Purple / Indigo Accent) */}
-            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-indigo-950/60 to-purple-900/30 border border-indigo-500/30 flex flex-col justify-between">
-              <span className="text-[10px] font-bold tracking-wider uppercase text-indigo-300 flex items-center gap-1">
+            {/* 1. Membership Plan & Validity (Purple / Indigo Accent) */}
+            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-indigo-950/70 to-purple-900/40 border border-indigo-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-black tracking-wider uppercase text-indigo-300 flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-indigo-400" />
-                MEMBERSHIP
+                PLAN & VALIDITY
               </span>
-              <div className="mt-1">
-                <div className="font-extrabold text-white text-xs truncate">
+              <div className="mt-1 space-y-0.5">
+                <div className="font-extrabold text-white text-xs truncate" title={currentPunch.membership_plan || 'Active Pass'}>
                   {currentPunch.membership_plan || 'Active Pass'}
                 </div>
-                <div className="text-[10px] text-indigo-200/80 font-medium flex items-center gap-1 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <div className="text-[10px] text-indigo-200/90 font-medium truncate" title={currentPunch.plan_validity || currentPunch.membership_expiry || 'Active'}>
+                  {currentPunch.plan_validity || (currentPunch.membership_expiry ? `Exp: ${currentPunch.membership_expiry}` : 'Active Plan')}
+                </div>
+                <div className="text-[9px] text-emerald-400 font-black uppercase tracking-wider flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   {currentPunch.membership_status || 'ACTIVE'}
-                  {currentPunch.membership_expiry && ` • Exp: ${currentPunch.membership_expiry}`}
                 </div>
               </div>
             </div>

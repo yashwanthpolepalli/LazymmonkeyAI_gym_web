@@ -51,6 +51,7 @@ export function CustomerGeofenceCheckinWidget({ onCheckinSuccess }: CustomerGeof
   const [verifyState, setVerifyState] = useState<'IDLE' | 'SCANNING' | 'COMPARING' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [verifyMatchScore, setVerifyMatchScore] = useState<number | null>(null);
   const [verifyErrorMsg, setVerifyErrorMsg] = useState<string | null>(null);
+  const [verifiedPunchData, setVerifiedPunchData] = useState<any | null>(null);
 
   // Camera & Video Refs
   const registerVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -238,6 +239,7 @@ export function CustomerGeofenceCheckinWidget({ onCheckinSuccess }: CustomerGeof
 
           if (res.match) {
             setVerifyMatchScore(Math.round(res.confidence * 100));
+            setVerifiedPunchData(res);
             setVerifyState('SUCCESS');
 
             if (action === 'CHECK_IN') {
@@ -252,8 +254,10 @@ export function CustomerGeofenceCheckinWidget({ onCheckinSuccess }: CustomerGeof
               });
             }
 
+            const planText = res.membership_plan ? ` • Plan: ${res.membership_plan}` : '';
+            const validityText = res.plan_validity ? ` (${res.plan_validity})` : '';
             showFeedback(
-              `✓ Verified via Face ID (${res.confidence_percentage} Match) at ${res.time}`,
+              `✓ Verified via Face ID (${res.confidence_percentage} Match) at ${res.time}${planText}${validityText}`,
               'success'
             );
 
@@ -263,7 +267,7 @@ export function CustomerGeofenceCheckinWidget({ onCheckinSuccess }: CustomerGeof
 
             setTimeout(() => {
               handleCloseVerifyModal();
-            }, 1600);
+            }, 2400);
           } else {
             setVerifyState('ERROR');
             setVerifyErrorMsg('Face did not match registered profile. Please look directly at the camera.');
@@ -318,8 +322,10 @@ export function CustomerGeofenceCheckinWidget({ onCheckinSuccess }: CustomerGeof
         });
       }
 
+      const planText = res.membership_plan ? ` • Plan: ${res.membership_plan}` : '';
+      const validityText = res.plan_validity ? ` (${res.plan_validity})` : '';
       showFeedback(
-        `✓ Gym Check-${action === 'CHECK_IN' ? 'In' : 'Out'} verified via Manual Punch at ${res.time}`,
+        `✓ Gym Check-${action === 'CHECK_IN' ? 'In' : 'Out'} verified via Manual Punch at ${res.time}${planText}${validityText}`,
         'success'
       );
 
@@ -691,16 +697,32 @@ export function CustomerGeofenceCheckinWidget({ onCheckinSuccess }: CustomerGeof
 
               {/* Success Result Badge */}
               {verifyState === 'SUCCESS' && (
-                <div className="absolute inset-0 bg-emerald-950/85 flex flex-col items-center justify-center gap-2 animate-fade-in">
-                  <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg">
-                    <Icon name="check" size={24} />
+                <div className="absolute inset-0 bg-emerald-950/92 flex flex-col items-center justify-center gap-1.5 p-3 text-center animate-fade-in">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg">
+                    <Icon name="check" size={20} />
                   </div>
-                  <span className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+                  <span className="text-[11px] font-black text-emerald-300 uppercase tracking-wider">
                     Match Confirmed ({verifyMatchScore || 99}%)
                   </span>
-                  <span className="text-[10px] text-emerald-200">
+                  <span className="text-[10px] font-bold text-white">
                     Check-{verifyAction === 'CHECK_IN' ? 'In' : 'Out'} Recorded ✓
                   </span>
+
+                  {/* Plan & Plan Validity Pill */}
+                  <div className="w-full mt-1 p-2 rounded-xl bg-slate-900/90 border border-emerald-400/30 text-left space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400 font-medium">Plan:</span>
+                      <span className="font-extrabold text-white truncate max-w-[130px]">
+                        {verifiedPunchData?.membership_plan || 'Active Membership'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400 font-medium">Validity:</span>
+                      <span className="font-extrabold text-emerald-400 truncate max-w-[130px]">
+                        {verifiedPunchData?.plan_validity || 'Active Plan'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
