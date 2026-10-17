@@ -911,6 +911,10 @@ def verify_customer_face_punch(
         "action": action,
         "branch": branch_name,
         "time": punch_res.get("time") or datetime.datetime.now().strftime("%I:%M %p"),
+        "membership_plan": punch_res.get("membership_plan") or "Standard Membership",
+        "membership_expiry": punch_res.get("membership_expiry"),
+        "plan_validity": punch_res.get("plan_validity") or "Active Plan",
+        "days_remaining": punch_res.get("days_remaining"),
         "punch": punch_res,
     }
 

@@ -661,10 +661,37 @@ class HrmsService:
                 if user:
                     cust = db.query(Customer).filter((Customer.user_id == user.id) | (Customer.email == user.email)).first()
 
+            cust_plan = "Standard Membership"
+            cust_expiry = None
+            cust_validity = "Active"
+            cust_days_remaining = None
+
             if cust:
                 display_name = cust.full_name
                 customer_id_val = cust.id
                 cust.status = "ACTIVE"
+                try:
+                    from src.models.membership import Membership
+                    mem = db.query(Membership).filter(
+                        (Membership.customer_id == cust.id) | (Membership.customer_id == cust.user_id)
+                    ).order_by(Membership.created_at.desc()).first()
+                    if mem:
+                        cust_plan = mem.plan_name or mem.plan_type or "Premium Plan"
+                        if mem.expiry_date:
+                            exp_d = mem.expiry_date.date() if hasattr(mem.expiry_date, 'date') else mem.expiry_date
+                            cust_expiry = exp_d.strftime("%d %b %Y")
+                            diff = (exp_d - today).days
+                            cust_days_remaining = diff
+                            if diff > 0:
+                                cust_validity = f"Valid till {cust_expiry} ({diff} days left)"
+                            elif diff == 0:
+                                cust_validity = "Expires Today"
+                            else:
+                                cust_validity = f"Expired on {cust_expiry}"
+                        else:
+                            cust_validity = "Active Lifetime Pass"
+                except Exception as ex:
+                    print("Error resolving customer membership in record_punch:", ex)
             else:
                 display_name = "Gym Customer"
                 customer_id_val = employee_id
@@ -794,6 +821,10 @@ class HrmsService:
                     "phone": cust.phone if (locals().get("cust") and cust) else None,
                     "email": cust.email if (locals().get("cust") and cust) else None,
                     "goal": cust.goal if (locals().get("cust") and cust) else None,
+                    "membership_plan": cust_plan if (locals().get("cust_plan")) else "Standard Membership",
+                    "membership_expiry": cust_expiry if (locals().get("cust_expiry")) else None,
+                    "plan_validity": cust_validity if (locals().get("cust_validity")) else "Active Plan",
+                    "days_remaining": cust_days_remaining if (locals().get("cust_days_remaining") is not None) else None,
                     "note": punch_notes,
                     "distance_meters": distance,
                     "within_perimeter": is_within_geofence,
@@ -818,7 +849,11 @@ class HrmsService:
             "distance_meters": distance,
             "is_within_geofence": is_within_geofence,
             "method": method,
-            "employee_name": display_name
+            "employee_name": display_name,
+            "membership_plan": cust_plan if (locals().get("cust_plan")) else "Standard Membership",
+            "membership_expiry": cust_expiry if (locals().get("cust_expiry")) else None,
+            "plan_validity": cust_validity if (locals().get("cust_validity")) else "Active Plan",
+            "days_remaining": cust_days_remaining if (locals().get("cust_days_remaining") is not None) else None,
         }
 
 

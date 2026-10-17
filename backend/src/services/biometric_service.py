@@ -246,9 +246,11 @@ class BiometricService:
 
             # Membership resolution
             mem = memberships_by_cust.get(cust.id) if cust else (memberships_by_cust.get(log.customer_id) if log.customer_id in memberships_by_cust else None)
-            mem_plan = "Standard Membership"
-            mem_status = "Active"
-            mem_expiry = None
+            mem_plan = meta.get("membership_plan") or "Standard Membership"
+            mem_status = meta.get("membership_status") or "Active"
+            mem_expiry = meta.get("membership_expiry")
+            plan_validity = meta.get("plan_validity")
+            days_remaining = meta.get("days_remaining")
             due_amount = 0.0
 
             if mem:
@@ -256,12 +258,31 @@ class BiometricService:
                 mem_status = (mem.status or "Active").upper()
                 due_amount = float(mem.due_amount or 0.0)
                 if mem.expiry_date:
-                    mem_expiry = mem.expiry_date.strftime("%d %b %Y")
+                    try:
+                        from datetime import date
+                        exp_date = mem.expiry_date.date() if hasattr(mem.expiry_date, 'date') else mem.expiry_date
+                        mem_expiry = exp_date.strftime("%d %b %Y")
+                        diff = (exp_date - date.today()).days
+                        days_remaining = diff
+                        if diff > 0:
+                            plan_validity = f"Valid till {mem_expiry} ({diff} days left)"
+                        elif diff == 0:
+                            plan_validity = "Expires Today"
+                        else:
+                            plan_validity = f"Expired on {mem_expiry}"
+                    except Exception:
+                        mem_expiry = str(mem.expiry_date)[:10]
+                        plan_validity = f"Valid till {mem_expiry}"
+                else:
+                    plan_validity = "Active Lifetime Pass"
             elif raw_role != "CUSTOMER":
                 mem_plan = "Staff / Trainer"
                 mem_status = "ACTIVE"
+                plan_validity = "Staff Access"
             elif cust and cust.status:
                 mem_status = cust.status.upper()
+                if not plan_validity:
+                    plan_validity = f"Status: {mem_status}"
 
             total_visits = (visit_counts.get(cust.id) if cust else None) or visit_counts.get(log.customer_id) or 1
 
@@ -289,6 +310,8 @@ class BiometricService:
                 "membership_plan": mem_plan,
                 "membership_status": mem_status,
                 "membership_expiry": mem_expiry,
+                "plan_validity": plan_validity,
+                "days_remaining": days_remaining,
                 "due_amount": due_amount,
                 "total_visits": total_visits,
                 "timestamp": log.timestamp.isoformat() if log.timestamp else None,
